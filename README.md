@@ -70,8 +70,59 @@ URL: http://localhost:8765/mcp
 If Open WebUI is running on a remote machine (e.g., via Tailscale):
 
 ```
-URL: http://<your-mac-ip>:8765/mcp
+URL: http://<your-machine-ip>:8765/mcp
 ```
+
+### Connecting from Claude Desktop
+
+Claude Desktop uses stdio transport for MCP servers, so you'll need the included `mcp-bridge.js` to bridge stdio to HTTP.
+
+**Requirements:**
+- Node.js 18+ (for native fetch support)
+- VaultAsMCP plugin running in Obsidian
+
+**Setup:**
+
+1. Locate the bridge script in your plugin directory:
+   ```
+   ~/.obsidian/plugins/vault-as-mcp/mcp-bridge.js
+   ```
+   (Or wherever you installed the plugin)
+
+2. Find your Claude Desktop config file:
+   - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+   - Linux: `~/.config/claude/claude_desktop_config.json`
+
+3. Add the MCP server configuration:
+   ```json
+   {
+     "mcpServers": {
+       "obsidian-vault": {
+         "command": "node",
+         "args": ["/absolute/path/to/.obsidian/plugins/vault-as-mcp/mcp-bridge.js"],
+         "env": {
+           "VAULT_MCP_URL": "http://localhost:8765/mcp"
+         }
+       }
+     }
+   }
+   ```
+
+4. **Important**: Replace `/absolute/path/to/` with the actual path to your vault
+
+5. Restart Claude Desktop
+
+**Testing:**
+- The bridge logs to stderr, so you can see its activity in Claude Desktop's logs
+- In Claude, you should see the vault's MCP tools available
+- Try asking Claude to "read my note at path Daily Notes/today.md"
+
+**Troubleshooting:**
+- Verify the plugin server is running (check Obsidian status bar)
+- Check the path to `mcp-bridge.js` is correct and absolute
+- Ensure Node.js 18+ is installed: `node --version`
+- Look for bridge errors in Claude Desktop's logs
 
 ## MCP Tools Reference
 

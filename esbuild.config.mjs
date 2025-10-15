@@ -11,7 +11,8 @@ if you want to view the source, please visit the github repository of this plugi
 const prod = (process.argv[2] === 'production');
 const dir = prod || !process.env.OUTDIR ? "./build" : process.env.OUTDIR;
 
-const parameters = {
+// Plugin build configuration
+const pluginParams = {
     banner: {
         js: banner,
     },
@@ -32,8 +33,29 @@ const parameters = {
     outdir: dir,
 };
 
+// Bridge build configuration (standalone Node.js script)
+const bridgeParams = {
+    banner: {
+        js: '#!/usr/bin/env node\n' + banner,
+    },
+    entryPoints: ['src/mcp-bridge.ts'],
+    bundle: true,
+    platform: 'node',
+    external: [...builtins],
+    format: 'cjs',
+    logLevel: 'info',
+    target: 'node18',
+    treeShaking: true,
+    sourcemap: prod ? false : 'inline',
+    minify: prod,
+    outfile: `${dir}/mcp-bridge.js`,
+};
+
 if (prod) {
-    await esbuild.build(parameters).catch((x) => {
+    await Promise.all([
+        esbuild.build(pluginParams),
+        esbuild.build(bridgeParams)
+    ]).catch((x) => {
         if (x.errors) {
             console.error(x.errors);
         } else {
@@ -42,6 +64,10 @@ if (prod) {
         process.exit(1)
     });
 } else {
-    const ctx = await esbuild.context(parameters);
-    await ctx.watch()
+    const pluginCtx = await esbuild.context(pluginParams);
+    const bridgeCtx = await esbuild.context(bridgeParams);
+    await Promise.all([
+        pluginCtx.watch(),
+        bridgeCtx.watch()
+    ]);
 }

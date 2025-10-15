@@ -11,7 +11,7 @@
     "lint": "npx @biomejs/biome lint ./src",
     "prebuild": "npx @biomejs/biome check ./src",
     "build": "node esbuild.config.mjs production",
-    "postbuild": "cp -v manifest.json README.md build",
+    "postbuild": "cp -v manifest.json README.md build && chmod +x build/mcp-bridge.js",
     "preversion": "npm run build",
     "version": "auto-changelog -p",
     "brat-notes": "run() { auto-changelog --stdout --hide-credit --hide-empty-releases --template .github/changelog.hbs -v $1 --starting-version $1  > release-notes.md; }; run"
