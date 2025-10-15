@@ -1,0 +1,22 @@
+# npm
+node_modules
+
+# build
+build
+main.js
+main.js.map
+*.js.map
+
+# obsidian
+data.json
+
+# macOS
+.DS_Store
+
+# editor
+.vscode/
+.idea/
+
+# misc
+*.log
+.env
