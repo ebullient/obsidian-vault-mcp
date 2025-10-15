@@ -1,9 +1,9 @@
 import type { VaultAsMCPSettings } from "./@types/settings";
 
 export const DEFAULT_SETTINGS: VaultAsMCPSettings = {
-	serverPort: 8765,
-	autoStart: true,
-	logLevel: "info",
+    serverPort: 8765,
+    autoStart: true,
+    logLevel: "info",
 };
 
 export const MCP_VERSION = "2024-11-05";

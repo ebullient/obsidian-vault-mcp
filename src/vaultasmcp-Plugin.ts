@@ -5,191 +5,191 @@ import { MCPServer } from "./vaultasmcp-Server";
 import { VaultAsMCPSettingsTab } from "./vaultasmcp-SettingsTab";
 
 export class VaultAsMCPPlugin extends Plugin {
-	settings!: VaultAsMCPSettings;
-	private server: MCPServer | null = null;
-	private statusBarItem: HTMLElement | null = null;
-	private serverStatus: ServerStatus = "stopped";
+    settings!: VaultAsMCPSettings;
+    private server: MCPServer | null = null;
+    private statusBarItem: HTMLElement | null = null;
+    private serverStatus: ServerStatus = "stopped";
 
-	async onload() {
-		console.log("Loading Vault as MCP Plugin");
+    async onload() {
+        console.log("Loading Vault as MCP Plugin");
 
-		await this.loadSettings();
+        await this.loadSettings();
 
-		this.addSettingTab(new VaultAsMCPSettingsTab(this.app, this));
+        this.addSettingTab(new VaultAsMCPSettingsTab(this.app, this));
 
-		// Defer initialization until layout is ready
-		this.app.workspace.onLayoutReady(() => {
-			this.initializePlugin();
-		});
-	}
+        // Defer initialization until layout is ready
+        this.app.workspace.onLayoutReady(() => {
+            this.initializePlugin();
+        });
+    }
 
-	private initializePlugin(): void {
-		// Create status bar item
-		this.statusBarItem = this.addStatusBarItem();
-		this.statusBarItem.addClass("vault-mcp-status");
-		this.updateStatusBar();
+    private initializePlugin(): void {
+        // Create status bar item
+        this.statusBarItem = this.addStatusBarItem();
+        this.statusBarItem.addClass("vault-mcp-status");
+        this.updateStatusBar();
 
-		// Make status bar clickable to toggle server
-		this.statusBarItem.addEventListener("click", () => {
-			this.toggleServer();
-		});
+        // Make status bar clickable to toggle server
+        this.statusBarItem.addEventListener("click", () => {
+            this.toggleServer();
+        });
 
-		// Add commands
-		this.addCommand({
-			id: "start-server",
-			name: "Start MCP Server",
-			callback: () => {
-				this.startServer();
-			},
-		});
+        // Add commands
+        this.addCommand({
+            id: "start-server",
+            name: "Start MCP Server",
+            callback: () => {
+                this.startServer();
+            },
+        });
 
-		this.addCommand({
-			id: "stop-server",
-			name: "Stop MCP Server",
-			callback: () => {
-				this.stopServer();
-			},
-		});
+        this.addCommand({
+            id: "stop-server",
+            name: "Stop MCP Server",
+            callback: () => {
+                this.stopServer();
+            },
+        });
 
-		this.addCommand({
-			id: "restart-server",
-			name: "Restart MCP Server",
-			callback: () => {
-				this.restartServer();
-			},
-		});
+        this.addCommand({
+            id: "restart-server",
+            name: "Restart MCP Server",
+            callback: () => {
+                this.restartServer();
+            },
+        });
 
-		// Auto-start if enabled
-		if (this.settings.autoStart) {
-			this.startServer();
-		}
-	}
+        // Auto-start if enabled
+        if (this.settings.autoStart) {
+            this.startServer();
+        }
+    }
 
-	onunload() {
-		console.log("Unloading Vault as MCP Plugin");
-		this.stopServer();
-	}
+    onunload() {
+        console.log("Unloading Vault as MCP Plugin");
+        this.stopServer();
+    }
 
-	async loadSettings() {
-		this.settings = Object.assign(
-			{},
-			DEFAULT_SETTINGS,
-			await this.loadData(),
-		);
-	}
+    async loadSettings() {
+        this.settings = Object.assign(
+            {},
+            DEFAULT_SETTINGS,
+            await this.loadData(),
+        );
+    }
 
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
+    async saveSettings() {
+        await this.saveData(this.settings);
+    }
 
-	private async toggleServer(): Promise<void> {
-		if (this.server?.isRunning()) {
-			await this.stopServer();
-		} else {
-			await this.startServer();
-		}
-	}
+    private async toggleServer(): Promise<void> {
+        if (this.server?.isRunning()) {
+            await this.stopServer();
+        } else {
+            await this.startServer();
+        }
+    }
 
-	async startServer(): Promise<void> {
-		if (this.server?.isRunning()) {
-			new Notice("MCP Server is already running");
-			return;
-		}
+    async startServer(): Promise<void> {
+        if (this.server?.isRunning()) {
+            new Notice("MCP Server is already running");
+            return;
+        }
 
-		try {
-			this.server = new MCPServer(
-				this.app,
-				this.settings.serverPort,
-				this.settings.logLevel,
-			);
+        try {
+            this.server = new MCPServer(
+                this.app,
+                this.settings.serverPort,
+                this.settings.logLevel,
+            );
 
-			await this.server.start();
-			this.serverStatus = "running";
-			this.updateStatusBar();
+            await this.server.start();
+            this.serverStatus = "running";
+            this.updateStatusBar();
 
-			new Notice(
-				`MCP Server started on port ${this.settings.serverPort}`,
-			);
-		} catch (error) {
-			this.serverStatus = "error";
-			this.updateStatusBar();
+            new Notice(
+                `MCP Server started on port ${this.settings.serverPort}`,
+            );
+        } catch (error) {
+            this.serverStatus = "error";
+            this.updateStatusBar();
 
-			if (error.code === "EADDRINUSE") {
-				new Notice(
-					`Port ${this.settings.serverPort} is already in use. Please change the port in settings.`,
-				);
-			} else {
-				new Notice(`Failed to start MCP Server: ${error.message}`);
-			}
-			console.error("[VaultAsMCP] Failed to start server:", error);
-		}
-	}
+            if (error.code === "EADDRINUSE") {
+                new Notice(
+                    `Port ${this.settings.serverPort} is already in use. Please change the port in settings.`,
+                );
+            } else {
+                new Notice(`Failed to start MCP Server: ${error.message}`);
+            }
+            console.error("[VaultAsMCP] Failed to start server:", error);
+        }
+    }
 
-	async stopServer(): Promise<void> {
-		if (!this.server) {
-			new Notice("MCP Server is not running");
-			return;
-		}
+    async stopServer(): Promise<void> {
+        if (!this.server) {
+            new Notice("MCP Server is not running");
+            return;
+        }
 
-		try {
-			await this.server.stop();
-			this.server = null;
-			this.serverStatus = "stopped";
-			this.updateStatusBar();
+        try {
+            await this.server.stop();
+            this.server = null;
+            this.serverStatus = "stopped";
+            this.updateStatusBar();
 
-			new Notice("MCP Server stopped");
-		} catch (error) {
-			new Notice(`Failed to stop MCP Server: ${error.message}`);
-			console.error("[VaultAsMCP] Failed to stop server:", error);
-		}
-	}
+            new Notice("MCP Server stopped");
+        } catch (error) {
+            new Notice(`Failed to stop MCP Server: ${error.message}`);
+            console.error("[VaultAsMCP] Failed to stop server:", error);
+        }
+    }
 
-	async restartServer(): Promise<void> {
-		await this.stopServer();
-		await this.startServer();
-	}
+    async restartServer(): Promise<void> {
+        await this.stopServer();
+        await this.startServer();
+    }
 
-	private updateStatusBar(): void {
-		if (!this.statusBarItem) {
-			return;
-		}
+    private updateStatusBar(): void {
+        if (!this.statusBarItem) {
+            return;
+        }
 
-		const port = this.server?.getPort() || this.settings.serverPort;
+        const port = this.server?.getPort() || this.settings.serverPort;
 
-		// Remove previous status classes
-		this.statusBarItem.removeClass("vault-mcp-status-running");
-		this.statusBarItem.removeClass("vault-mcp-status-error");
-		this.statusBarItem.removeClass("vault-mcp-status-stopped");
+        // Remove previous status classes
+        this.statusBarItem.removeClass("vault-mcp-status-running");
+        this.statusBarItem.removeClass("vault-mcp-status-error");
+        this.statusBarItem.removeClass("vault-mcp-status-stopped");
 
-		switch (this.serverStatus) {
-			case "running":
-				this.statusBarItem.setText(`MCP:${port} ●`);
-				this.statusBarItem.setAttribute(
-					"aria-label",
-					"MCP Server running. Click to stop.",
-				);
-				this.statusBarItem.addClass("vault-mcp-status-running");
-				break;
-			case "error":
-				this.statusBarItem.setText(`MCP:${port} ✕`);
-				this.statusBarItem.setAttribute(
-					"aria-label",
-					"MCP Server error. Click to retry.",
-				);
-				this.statusBarItem.addClass("vault-mcp-status-error");
-				break;
-			case "stopped":
-				this.statusBarItem.setText(`MCP:${port} ○`);
-				this.statusBarItem.setAttribute(
-					"aria-label",
-					"MCP Server stopped. Click to start.",
-				);
-				this.statusBarItem.addClass("vault-mcp-status-stopped");
-				break;
-		}
-	}
+        switch (this.serverStatus) {
+            case "running":
+                this.statusBarItem.setText(`MCP:${port} ●`);
+                this.statusBarItem.setAttribute(
+                    "aria-label",
+                    "MCP Server running. Click to stop.",
+                );
+                this.statusBarItem.addClass("vault-mcp-status-running");
+                break;
+            case "error":
+                this.statusBarItem.setText(`MCP:${port} ✕`);
+                this.statusBarItem.setAttribute(
+                    "aria-label",
+                    "MCP Server error. Click to retry.",
+                );
+                this.statusBarItem.addClass("vault-mcp-status-error");
+                break;
+            case "stopped":
+                this.statusBarItem.setText(`MCP:${port} ○`);
+                this.statusBarItem.setAttribute(
+                    "aria-label",
+                    "MCP Server stopped. Click to start.",
+                );
+                this.statusBarItem.addClass("vault-mcp-status-stopped");
+                break;
+        }
+    }
 
-	getServerStatus(): ServerStatus {
-		return this.serverStatus;
-	}
+    getServerStatus(): ServerStatus {
+        return this.serverStatus;
+    }
 }
