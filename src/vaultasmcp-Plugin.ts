@@ -17,6 +17,13 @@ export class VaultAsMCPPlugin extends Plugin {
 
 		this.addSettingTab(new VaultAsMCPSettingsTab(this.app, this));
 
+		// Defer initialization until layout is ready
+		this.app.workspace.onLayoutReady(() => {
+			this.initializePlugin();
+		});
+	}
+
+	private initializePlugin(): void {
 		// Create status bar item
 		this.statusBarItem = this.addStatusBarItem();
 		this.statusBarItem.addClass("vault-mcp-status");
@@ -54,9 +61,7 @@ export class VaultAsMCPPlugin extends Plugin {
 
 		// Auto-start if enabled
 		if (this.settings.autoStart) {
-			this.app.workspace.onLayoutReady(() => {
-				this.startServer();
-			});
+			this.startServer();
 		}
 	}
 
@@ -151,6 +156,11 @@ export class VaultAsMCPPlugin extends Plugin {
 
 		const port = this.server?.getPort() || this.settings.serverPort;
 
+		// Remove previous status classes
+		this.statusBarItem.removeClass("vault-mcp-status-running");
+		this.statusBarItem.removeClass("vault-mcp-status-error");
+		this.statusBarItem.removeClass("vault-mcp-status-stopped");
+
 		switch (this.serverStatus) {
 			case "running":
 				this.statusBarItem.setText(`MCP:${port} ●`);
@@ -158,7 +168,7 @@ export class VaultAsMCPPlugin extends Plugin {
 					"aria-label",
 					"MCP Server running. Click to stop.",
 				);
-				this.statusBarItem.style.color = "var(--text-success)";
+				this.statusBarItem.addClass("vault-mcp-status-running");
 				break;
 			case "error":
 				this.statusBarItem.setText(`MCP:${port} ✕`);
@@ -166,7 +176,7 @@ export class VaultAsMCPPlugin extends Plugin {
 					"aria-label",
 					"MCP Server error. Click to retry.",
 				);
-				this.statusBarItem.style.color = "var(--text-error)";
+				this.statusBarItem.addClass("vault-mcp-status-error");
 				break;
 			case "stopped":
 				this.statusBarItem.setText(`MCP:${port} ○`);
@@ -174,11 +184,9 @@ export class VaultAsMCPPlugin extends Plugin {
 					"aria-label",
 					"MCP Server stopped. Click to start.",
 				);
-				this.statusBarItem.style.color = "var(--text-muted)";
+				this.statusBarItem.addClass("vault-mcp-status-stopped");
 				break;
 		}
-
-		this.statusBarItem.style.cursor = "pointer";
 	}
 
 	getServerStatus(): ServerStatus {

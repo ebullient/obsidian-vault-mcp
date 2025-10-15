@@ -1,54 +1,101 @@
 import { type App, PluginSettingTab, Setting } from "obsidian";
+import type { VaultAsMCPSettings } from "./@types/settings";
 import type { VaultAsMCPPlugin } from "./vaultasmcp-Plugin";
 
 export class VaultAsMCPSettingsTab extends PluginSettingTab {
-	constructor(
-		app: App,
-		private plugin: VaultAsMCPPlugin,
-	) {
+	plugin: VaultAsMCPPlugin;
+	newSettings!: VaultAsMCPSettings;
+
+	constructor(app: App, plugin: VaultAsMCPPlugin) {
 		super(app, plugin);
+		this.plugin = plugin;
+	}
+
+	async save() {
+		const needsRestart =
+			this.plugin.settings.serverPort !== this.newSettings.serverPort ||
+			this.plugin.settings.logLevel !== this.newSettings.logLevel;
+
+		this.plugin.settings = this.newSettings;
+		await this.plugin.saveSettings();
+
+		if (needsRestart && this.plugin.getServerStatus() === "running") {
+			await this.plugin.restartServer();
+		}
+	}
+
+	private cloneSettings(): VaultAsMCPSettings {
+		return JSON.parse(JSON.stringify(this.plugin.settings));
+	}
+
+	async reset() {
+		this.newSettings = this.cloneSettings();
+		this.display();
 	}
 
 	display(): void {
+		if (!this.newSettings) {
+			this.newSettings = this.cloneSettings();
+		}
+
 		const { containerEl } = this;
 
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Vault as MCP Settings" });
+		new Setting(containerEl).setName("Vault as MCP").setHeading();
+
+		new Setting(containerEl)
+			.setName("Save settings")
+			.setClass("vault-mcp-save-reset")
+			.addButton((button) =>
+				button
+					.setButtonText("Reset")
+					.setTooltip("Reset to current saved settings")
+					.onClick(() => {
+						this.reset();
+					}),
+			)
+			.addButton((button) =>
+				button
+					.setButtonText("Save")
+					.setCta()
+					.setTooltip("Save all changes")
+					.onClick(async () => {
+						await this.save();
+					}),
+			);
 
 		// Server Port
 		new Setting(containerEl)
-			.setName("Server Port")
+			.setName("Server port")
 			.setDesc("Port number for the MCP server (requires restart)")
 			.addText((text) =>
 				text
 					.setPlaceholder("8765")
-					.setValue(String(this.plugin.settings.serverPort))
-					.onChange(async (value) => {
+					.setValue(String(this.newSettings.serverPort))
+					.onChange((value) => {
 						const port = Number.parseInt(value, 10);
 						if (!Number.isNaN(port) && port > 0 && port < 65536) {
-							this.plugin.settings.serverPort = port;
-							await this.plugin.saveSettings();
+							this.newSettings.serverPort = port;
 						}
 					}),
 			);
 
 		// Auto-start
 		new Setting(containerEl)
-			.setName("Auto-start Server")
+			.setName("Auto-start server")
 			.setDesc("Automatically start the MCP server when Obsidian loads")
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.plugin.settings.autoStart)
-					.onChange(async (value) => {
-						this.plugin.settings.autoStart = value;
-						await this.plugin.saveSettings();
+					.setValue(this.newSettings.autoStart)
+					.onChange((value) => {
+						this.newSettings.autoStart = value;
 					}),
 			);
 
 		// Log Level
 		new Setting(containerEl)
-			.setName("Log Level")
+			.setName("Log level")
 			.setDesc("Logging verbosity (requires server restart)")
 			.addDropdown((dropdown) =>
 				dropdown
@@ -56,19 +103,18 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
 					.addOption("info", "Info")
 					.addOption("warn", "Warn")
 					.addOption("error", "Error")
-					.setValue(this.plugin.settings.logLevel)
-					.onChange(async (value) => {
-						this.plugin.settings.logLevel = value as
+					.setValue(this.newSettings.logLevel)
+					.onChange((value) => {
+						this.newSettings.logLevel = value as
 							| "debug"
 							| "info"
 							| "warn"
 							| "error";
-						await this.plugin.saveSettings();
 					}),
 			);
 
 		// Server Status Display
-		containerEl.createEl("h3", { text: "Server Status" });
+		new Setting(containerEl).setName("Server status").setHeading();
 
 		const statusContainer = containerEl.createDiv("vault-mcp-status-info");
 
@@ -83,15 +129,15 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
 					statusText.setText(
 						`✓ Server is running on port ${this.plugin.settings.serverPort}`,
 					);
-					statusText.style.color = "var(--text-success)";
+					statusText.addClass("vault-mcp-status-running");
 					break;
 				case "error":
 					statusText.setText("✕ Server encountered an error");
-					statusText.style.color = "var(--text-error)";
+					statusText.addClass("vault-mcp-status-error");
 					break;
 				case "stopped":
 					statusText.setText("○ Server is stopped");
-					statusText.style.color = "var(--text-muted)";
+					statusText.addClass("vault-mcp-status-stopped");
 					break;
 			}
 
@@ -105,10 +151,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
 				codeEl.setText(
 					`http://localhost:${this.plugin.settings.serverPort}/mcp`,
 				);
-				codeEl.style.display = "block";
-				codeEl.style.padding = "8px";
-				codeEl.style.marginTop = "4px";
-				codeEl.style.backgroundColor = "var(--background-secondary)";
+				codeEl.addClass("vault-mcp-connection-url");
 			}
 		};
 
@@ -116,9 +159,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
 
 		// Control Buttons
 		const buttonContainer = containerEl.createDiv();
-		buttonContainer.style.marginTop = "16px";
-		buttonContainer.style.display = "flex";
-		buttonContainer.style.gap = "8px";
+		buttonContainer.addClass("vault-mcp-button-container");
 
 		new Setting(buttonContainer)
 			.addButton((button) =>
@@ -141,7 +182,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
 			);
 
 		// Documentation
-		containerEl.createEl("h3", { text: "Available MCP Tools" });
+		new Setting(containerEl).setName("Available MCP tools").setHeading();
 
 		const toolsList = containerEl.createEl("ul");
 		const tools = [
@@ -172,5 +213,10 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
 			li.createEl("strong", { text: tool.name });
 			li.appendText(`: ${tool.desc}`);
 		}
+	}
+
+	/** Save on exit */
+	hide(): void {
+		this.save();
 	}
 }

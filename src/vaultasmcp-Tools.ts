@@ -1,4 +1,5 @@
-import type { App, TFile } from "obsidian";
+import type { App } from "obsidian";
+import { TFile } from "obsidian";
 import type { MCPTool } from "./@types/settings";
 
 export class MCPTools {

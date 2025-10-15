@@ -72,6 +72,8 @@ export class MCPHandler {
 		const toolName = params.name as string;
 		const args = (params.arguments as Record<string, unknown>) || {};
 
+		this.log("info", `Calling tool: ${toolName}`, args);
+
 		if (!toolName) {
 			return this.createError(
 				request.id,
@@ -82,6 +84,7 @@ export class MCPHandler {
 
 		try {
 			const result = await this.tools.executeTool(toolName, args);
+			this.log("info", `Tool ${toolName} succeeded:`, result);
 			return this.createResponse(request.id, {
 				content: [
 					{
@@ -91,6 +94,7 @@ export class MCPHandler {
 				],
 			});
 		} catch (error) {
+			this.log("error", `Tool ${toolName} failed:`, error);
 			return this.createError(
 				request.id,
 				-32000,

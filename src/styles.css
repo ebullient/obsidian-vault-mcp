@@ -1,0 +1,34 @@
+/* Vault as MCP Plugin Styles */
+
+/* Status bar */
+.vault-mcp-status {
+	cursor: pointer;
+}
+
+/* Settings tab status indicators */
+.vault-mcp-status-running {
+	color: var(--text-success);
+}
+
+.vault-mcp-status-error {
+	color: var(--text-error);
+}
+
+.vault-mcp-status-stopped {
+	color: var(--text-muted);
+}
+
+/* Connection URL display */
+.vault-mcp-connection-url {
+	display: block;
+	padding: 8px;
+	margin-top: 4px;
+	background-color: var(--background-secondary);
+}
+
+/* Button container */
+.vault-mcp-button-container {
+	margin-top: 16px;
+	display: flex;
+	gap: 8px;
+}
