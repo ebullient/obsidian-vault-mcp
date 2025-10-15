@@ -20,3 +20,5 @@ data.json
 # misc
 *.log
 .env
+
+.claude/settings.local.json
