@@ -64,16 +64,16 @@ export class MCPTools {
                 },
             },
             {
-                name: "list_incomplete_tasks",
+                name: "list_notes",
                 description:
-                    "Find all incomplete tasks (unchecked checkboxes) in a note or folder. Returns list of tasks with their locations.",
+                    "List all notes in a directory path. Returns note paths.",
                 inputSchema: {
                     type: "object",
                     properties: {
                         path: {
                             type: "string",
                             description:
-                                "The path to a note or folder to search",
+                                "Directory path to list notes from (e.g., 'Daily Notes'). Use empty string for root.",
                         },
                     },
                     required: ["path"],
@@ -114,8 +114,8 @@ export class MCPTools {
                 );
             case "get_linked_notes":
                 return await this.getLinkedNotes(args.path as string);
-            case "list_incomplete_tasks":
-                return await this.listIncompleteTasks(args.path as string);
+            case "list_notes":
+                return await this.listNotes(args.path as string);
             case "list_notes_by_tag":
                 return await this.listNotesByTag(args.tags as string[]);
             default:
@@ -210,40 +210,15 @@ export class MCPTools {
         return { links: Array.from(links).sort() };
     }
 
-    private async listIncompleteTasks(
-        path: string,
-    ): Promise<{ tasks: Array<{ file: string; line: number; task: string }> }> {
-        const file = this.app.vault.getAbstractFileByPath(path);
+    private async listNotes(path: string): Promise<{ notes: string[] }> {
+        const allFiles = this.app.vault.getMarkdownFiles();
+        const files = path
+            ? allFiles.filter((f) => f.path.startsWith(path))
+            : allFiles;
 
-        let files: TFile[] = [];
-        if (file instanceof TFile) {
-            files = [file];
-        } else {
-            // It's a folder or doesn't exist
-            const allFiles = this.app.vault.getMarkdownFiles();
-            files = allFiles.filter((f) => f.path.startsWith(path));
-        }
-
-        const tasks: Array<{ file: string; line: number; task: string }> = [];
-
-        for (const f of files) {
-            const content = await this.app.vault.cachedRead(f);
-            const lines = content.split("\n");
-
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                // Match unchecked tasks: - [ ] or * [ ]
-                if (/^[\s]*[-*]\s\[\s\]/.test(line)) {
-                    tasks.push({
-                        file: f.path,
-                        line: i + 1,
-                        task: line.trim(),
-                    });
-                }
-            }
-        }
-
-        return { tasks };
+        return {
+            notes: files.map((f) => f.path).sort(),
+        };
     }
 
     private async listNotesByTag(tags: string[]): Promise<{ notes: string[] }> {
