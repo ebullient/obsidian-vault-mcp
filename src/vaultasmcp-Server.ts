@@ -42,14 +42,29 @@ export class MCPServer {
         // MCP protocol endpoint
         this.server.post("/mcp", async (request, reply) => {
             const mcpRequest = request.body as MCPRequest;
+            console.log(
+                "[VaultAsMCP] Received request:",
+                mcpRequest.method,
+                mcpRequest.id !== undefined ? `(id: ${mcpRequest.id})` : "",
+            );
+
             const response = await this.mcpHandler.handleRequest(mcpRequest);
 
             // Notifications don't get responses
             if (response === null) {
+                console.log(
+                    "[VaultAsMCP] Sending 204 for notification:",
+                    mcpRequest.method,
+                );
                 reply.code(204).send();
                 return;
             }
 
+            console.log(
+                "[VaultAsMCP] Sending response for:",
+                mcpRequest.method,
+                mcpRequest.id,
+            );
             reply
                 .code(200)
                 .header("Content-Type", "application/json")

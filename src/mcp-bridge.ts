@@ -149,6 +149,7 @@ function writeMessage(message: unknown): void {
 async function main(): Promise<void> {
     log("info", "MCP HTTP Bridge starting");
     log("info", `Target: ${MCP_URL}`);
+    log("debug", "Waiting for messages on stdin...");
 
     // Handle signals
     process.on("SIGINT", () => {
@@ -163,8 +164,10 @@ async function main(): Promise<void> {
 
     try {
         for await (const request of readMessages()) {
+            log("debug", 'Message received:', request.method);
             const response = await forwardRequest(request);
             if (response !== null) {
+                log("debug", "Writing response to stdout");
                 writeMessage(response);
             }
         }
