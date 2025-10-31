@@ -96,6 +96,37 @@ export class MCPTools {
                     required: ["tags"],
                 },
             },
+            {
+                name: "read_note_with_embeds",
+                description:
+                    "Read a note with embedded content expanded inline. " +
+                    "Recursively expands embeds up to 2 levels deep, " +
+                    "preventing circular references. " +
+                    "Optionally include regular links and exclude patterns.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        path: {
+                            type: "string",
+                            description:
+                                "The path to the note (e.g., 'folder/note.md')",
+                        },
+                        includeLinks: {
+                            type: "boolean",
+                            description:
+                                "Include regular links in addition to embeds (default: false)",
+                        },
+                        excludePatterns: {
+                            type: "array",
+                            items: { type: "string" },
+                            description:
+                                "Regex patterns to exclude links " +
+                                "(matches against '[display](link)' format)",
+                        },
+                    },
+                    required: ["path"],
+                },
+            },
         ];
     }
 
@@ -118,6 +149,12 @@ export class MCPTools {
                 return await this.listNotes(args.path as string);
             case "list_notes_by_tag":
                 return await this.listNotesByTag(args.tags as string[]);
+            case "read_note_with_embeds":
+                return await this.readNoteWithEmbeds(
+                    args.path as string,
+                    args.excludePatterns as string[] | undefined,
+                    args.includeLinks as boolean | undefined,
+                );
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
@@ -240,5 +277,223 @@ export class MCPTools {
         return {
             notes: matchingFiles.map((f) => f.path).sort(),
         };
+    }
+
+    private async readNoteWithEmbeds(
+        path: string,
+        excludePatterns: string[] | undefined,
+        includeLinks = false,
+    ): Promise<{ content: string }> {
+        const file = this.app.vault.getAbstractFileByPath(path);
+        if (!(file instanceof TFile)) {
+            throw new Error(`Note not found: ${path}`);
+        }
+
+        const content = await this.app.vault.cachedRead(file);
+        const compiledPatterns = this.compileExcludePatterns(
+            excludePatterns || [],
+        );
+        const expandedContent = await this.expandEmbeds(
+            file,
+            content,
+            compiledPatterns,
+            includeLinks,
+        );
+
+        return { content: expandedContent };
+    }
+
+    private compileExcludePatterns(patterns: string[]): RegExp[] {
+        const compiled: RegExp[] = [];
+        for (const pattern of patterns) {
+            try {
+                compiled.push(new RegExp(pattern));
+            } catch (error) {
+                console.warn(`Invalid exclude pattern: ${pattern}`, error);
+            }
+        }
+        return compiled;
+    }
+
+    private shouldExcludeLink(
+        linkCache: { link: string; displayText?: string },
+        excludePatterns: RegExp[],
+    ): boolean {
+        const textToCheck = `[${linkCache.displayText}](${linkCache.link})`;
+        return excludePatterns.some((pattern) => pattern.test(textToCheck));
+    }
+
+    private parseLinkReference(link: string): {
+        path: string;
+        subpath: string | null;
+    } {
+        const anchorPos = link.indexOf("#");
+        if (anchorPos < 0) {
+            return { path: link, subpath: null };
+        }
+        return {
+            path: link.substring(0, anchorPos),
+            subpath: link.substring(anchorPos + 1),
+        };
+    }
+
+    private async expandEmbeds(
+        sourceFile: TFile,
+        content: string,
+        excludePatterns: RegExp[] = [],
+        includeLinks = false,
+        depth = 0,
+        processedFiles = new Set<string>(),
+    ): Promise<string> {
+        // Limit nesting to 2 levels
+        if (depth >= 2) {
+            return content;
+        }
+
+        // Mark this file as processed to prevent circular references
+        processedFiles.add(sourceFile.path);
+
+        let expandedContent = content;
+        const fileCache = this.app.metadataCache.getFileCache(sourceFile);
+
+        if (!fileCache) {
+            return content;
+        }
+
+        const processedLinks = new Set<string>();
+
+        // Process both links and embeds
+        // Only include regular links if includeLinks is true
+        const allLinks = [
+            ...(includeLinks ? fileCache.links || [] : []),
+            ...(fileCache.embeds || []),
+        ].filter((link) => link);
+
+        for (const cachedLink of allLinks) {
+            // Skip if link matches exclusion patterns
+            if (this.shouldExcludeLink(cachedLink, excludePatterns)) {
+                continue;
+            }
+
+            // Skip if we've already processed this link target
+            if (processedLinks.has(cachedLink.link)) {
+                continue;
+            }
+            processedLinks.add(cachedLink.link);
+
+            // Parse link to extract path and subpath
+            const { path, subpath } = this.parseLinkReference(cachedLink.link);
+
+            const targetFile = this.app.metadataCache.getFirstLinkpathDest(
+                path,
+                sourceFile.path,
+            );
+
+            if (targetFile) {
+                // Skip if circular reference
+                if (processedFiles.has(targetFile.path)) {
+                    continue;
+                }
+
+                try {
+                    const linkedContent =
+                        await this.app.vault.cachedRead(targetFile);
+                    const extractedContent = subpath
+                        ? this.extractSubpathContent(
+                              targetFile,
+                              linkedContent,
+                              subpath,
+                          )
+                        : linkedContent;
+
+                    // Recursively expand embeds in the embedded content
+                    const fullyExpandedContent = await this.expandEmbeds(
+                        targetFile,
+                        extractedContent,
+                        excludePatterns,
+                        includeLinks,
+                        depth + 1,
+                        processedFiles,
+                    );
+
+                    // Format as markdown section
+                    const quotedContent = this.formatAsEmbedSection(
+                        fullyExpandedContent,
+                        cachedLink.link,
+                        depth,
+                    );
+                    expandedContent += `\n\n${quotedContent}`;
+                } catch (error) {
+                    console.warn(
+                        "Could not read linked file:",
+                        cachedLink.link,
+                        error,
+                    );
+                }
+            }
+        }
+
+        return expandedContent;
+    }
+
+    private extractSubpathContent(
+        file: TFile,
+        fileContent: string,
+        subpath: string,
+    ): string {
+        const cache = this.app.metadataCache.getFileCache(file);
+        if (!cache) {
+            return fileContent;
+        }
+
+        // Check for block reference (^block-id)
+        if (subpath.startsWith("^")) {
+            const blockId = subpath.substring(1);
+            const block = cache.blocks?.[blockId];
+            if (block) {
+                const lines = fileContent.split("\n");
+                return lines[block.position.start.line] || "";
+            }
+            return fileContent;
+        }
+
+        // Check for heading reference
+        const targetHeading = subpath.replace(/%20/g, " ");
+        const heading = cache.headings?.find(
+            (h) => h.heading === targetHeading,
+        );
+
+        if (heading && cache.headings) {
+            // Find the end of this section
+            const start = heading.position.end.offset;
+            let end = fileContent.length;
+
+            // Find next heading at same or higher level
+            const headingIndex = cache.headings.indexOf(heading);
+            for (const h of cache.headings.slice(headingIndex + 1)) {
+                if (h.level <= heading.level) {
+                    end = h.position.start.offset;
+                    break;
+                }
+            }
+
+            return fileContent.substring(start, end).trim();
+        }
+
+        return fileContent;
+    }
+
+    private formatAsEmbedSection(
+        content: string,
+        linkTarget: string,
+        depth: number,
+    ): string {
+        const prefix = ">".repeat(depth + 1);
+        const lines = content
+            .split("\n")
+            .map((line) => `${prefix} ${line}`)
+            .join("\n");
+        const header = `${prefix} **Embedded: ${linkTarget}**`;
+        return `${header}\n${lines}`;
     }
 }

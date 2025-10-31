@@ -89,7 +89,8 @@ async function forwardRequest(request: {
     }
 }
 
-// Helper function to read LSP-style Content-Length framed messages from stdin
+// Helper function to read newline-delimited JSON messages from stdin
+// (MCP TypeScript SDK uses newline delimiters, not Content-Length framing)
 type JsonRpcMessage =
     | { jsonrpc: "2.0"; id: number | string; method: string; params?: unknown }
     | { jsonrpc: "2.0"; method: string; params?: unknown };
@@ -97,39 +98,32 @@ type JsonRpcMessage =
 async function* readMessages(): AsyncGenerator<JsonRpcMessage, void, void> {
     const decoder = new StringDecoder("utf8");
     let buffer = "";
-    let contentLength = -1;
 
     for await (const chunk of stdin) {
         buffer += decoder.write(chunk);
 
         while (true) {
-            if (contentLength < 0) {
-                const headerEnd = buffer.indexOf("\r\n\r\n");
-                if (headerEnd === -1) {
-                    // Not enough data for headers yet
-                    break;
-                }
-
-                const header = buffer.slice(0, headerEnd);
-                const match = header.match(/Content-Length: (\d+)/i);
-                if (!match) {
-                    throw new Error("Missing Content-Length header");
-                }
-                contentLength = Number.parseInt(match[1], 10);
-                buffer = buffer.slice(headerEnd + 4);
-            }
-
-            if (buffer.length < contentLength) {
-                // Wait for more data
+            const newlineIndex = buffer.indexOf("\n");
+            if (newlineIndex === -1) {
+                // No complete message yet
                 break;
             }
 
-            const message = buffer.slice(0, contentLength);
-            buffer = buffer.slice(contentLength);
-            contentLength = -1;
+            let line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+
+            // Remove trailing \r if present
+            if (line.endsWith("\r")) {
+                line = line.slice(0, -1);
+            }
+
+            // Skip empty lines
+            if (line.trim().length === 0) {
+                continue;
+            }
 
             try {
-                const parsed = JSON.parse(message);
+                const parsed = JSON.parse(line);
                 yield parsed;
             } catch (err) {
                 log("error", "Failed to parse JSON message:", err);
@@ -138,11 +132,11 @@ async function* readMessages(): AsyncGenerator<JsonRpcMessage, void, void> {
     }
 }
 
-// Helper function to write LSP-style Content-Length framed messages to stdout
+// Helper function to write newline-delimited JSON messages to stdout
+// (MCP TypeScript SDK uses newline delimiters, not Content-Length framing)
 function writeMessage(message: unknown): void {
     const json = JSON.stringify(message);
-    const contentLength = Buffer.byteLength(json, "utf8");
-    stdout.write(`Content-Length: ${contentLength}\r\n\r\n${json}`);
+    stdout.write(`${json}\n`);
 }
 
 // Main event loop
@@ -164,7 +158,7 @@ async function main(): Promise<void> {
 
     try {
         for await (const request of readMessages()) {
-            log("debug", 'Message received:', request.method);
+            log("debug", "Message received:", request.method);
             const response = await forwardRequest(request);
             if (response !== null) {
                 log("debug", "Writing response to stdout");
