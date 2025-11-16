@@ -22,6 +22,9 @@
 import { stdin, stdout } from "node:process";
 import { StringDecoder } from "node:string_decoder";
 
+// Version injected at build time
+declare const __VERSION__: string;
+
 // Config from environment
 const MCP_URL = process.env.VAULT_MCP_URL || "http://localhost:8765/mcp";
 const TIMEOUT = 30000; // 30 seconds
@@ -141,7 +144,7 @@ function writeMessage(message: unknown): void {
 
 // Main event loop
 async function main(): Promise<void> {
-    log("info", "MCP HTTP Bridge starting");
+    log("info", `MCP HTTP Bridge v${__VERSION__} starting`);
     log("info", `Target: ${MCP_URL}`);
     log("debug", "Waiting for messages on stdin...");
 
