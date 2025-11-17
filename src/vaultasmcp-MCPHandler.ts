@@ -1,5 +1,5 @@
 import type { App } from "obsidian";
-import type { MCPRequest, MCPResponse } from "./@types/settings";
+import type { Logger, MCPRequest, MCPResponse } from "./@types/settings";
 import {
     MCP_VERSION,
     SERVER_NAME,
@@ -9,16 +9,15 @@ import { MCPTools } from "./vaultasmcp-Tools";
 
 export class MCPHandler {
     private tools: MCPTools;
+    private logger: Logger;
 
-    constructor(
-        app: App,
-        private logLevel: "debug" | "info" | "warn" | "error",
-    ) {
-        this.tools = new MCPTools(app);
+    constructor(app: App, logger: Logger) {
+        this.logger = logger;
+        this.tools = new MCPTools(app, logger);
     }
 
     async handleRequest(request: MCPRequest): Promise<MCPResponse | null> {
-        this.log("debug", "Received MCP request:", request);
+        this.logger.debug("Received MCP request:", request);
 
         try {
             switch (request.method) {
@@ -26,7 +25,7 @@ export class MCPHandler {
                     return this.handleInitialize(request);
                 case "notifications/initialized":
                     // Notifications don't get responses
-                    this.log("debug", "Received initialized notification");
+                    this.logger.debug("Received initialized notification");
                     return null;
                 case "tools/list":
                     return this.handleToolsList(request);
@@ -43,11 +42,11 @@ export class MCPHandler {
                             `Method not found: ${request.method}`,
                         );
                     }
-                    this.log("warn", `Unknown notification: ${request.method}`);
+                    this.logger.warn(`Unknown notification: ${request.method}`);
                     return null;
             }
         } catch (error) {
-            this.log("error", "Error handling request:", error);
+            this.logger.error(error, "Error handling request");
             // Only respond to requests, not notifications
             if (request.id !== undefined) {
                 return this.createError(
@@ -85,7 +84,7 @@ export class MCPHandler {
         const toolName = params.name as string;
         const args = (params.arguments as Record<string, unknown>) || {};
 
-        this.log("info", `Calling tool: ${toolName}`, args);
+        this.logger.debug("Calling tool:", toolName, args);
 
         if (!toolName) {
             return this.createError(
@@ -97,7 +96,7 @@ export class MCPHandler {
 
         try {
             const result = await this.tools.executeTool(toolName, args);
-            this.log("info", `Tool ${toolName} succeeded:`, result);
+            this.logger.debug("Tool", toolName, "succeeded:", result);
             return this.createResponse(request.id, {
                 content: [
                     {
@@ -107,7 +106,7 @@ export class MCPHandler {
                 ],
             });
         } catch (error) {
-            this.log("error", `Tool ${toolName} failed:`, error);
+            this.logger.error(error, `Tool ${toolName} failed`);
             return this.createError(
                 request.id,
                 -32000,
@@ -140,18 +139,5 @@ export class MCPHandler {
                 message,
             },
         };
-    }
-
-    private log(
-        level: "debug" | "info" | "warn" | "error",
-        ...args: unknown[]
-    ): void {
-        const levels = ["debug", "info", "warn", "error"];
-        const currentLevelIndex = levels.indexOf(this.logLevel);
-        const messageLevelIndex = levels.indexOf(level);
-
-        if (messageLevelIndex >= currentLevelIndex) {
-            console[level]("[VaultAsMCP]", ...args);
-        }
     }
 }

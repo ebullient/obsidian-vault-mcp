@@ -13,8 +13,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
 
     async save() {
         const needsRestart =
-            this.plugin.settings.serverPort !== this.newSettings.serverPort ||
-            this.plugin.settings.logLevel !== this.newSettings.logLevel;
+            this.plugin.settings.serverPort !== this.newSettings.serverPort;
 
         this.plugin.settings = this.newSettings;
         await this.plugin.saveSettings();
@@ -93,23 +92,14 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                     }),
             );
 
-        // Log Level
-        new Setting(containerEl)
-            .setName("Log level")
-            .setDesc("Logging verbosity (requires server restart)")
-            .addDropdown((dropdown) =>
-                dropdown
-                    .addOption("debug", "Debug")
-                    .addOption("info", "Info")
-                    .addOption("warn", "Warn")
-                    .addOption("error", "Error")
-                    .setValue(this.newSettings.logLevel)
-                    .onChange((value) => {
-                        this.newSettings.logLevel = value as
-                            | "debug"
-                            | "info"
-                            | "warn"
-                            | "error";
+        new Setting(this.containerEl)
+            .setName("Debug")
+            .setDesc("Enable debug messages")
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.newSettings.debug)
+                    .onChange(async (value) => {
+                        this.newSettings.debug = value;
                     }),
             );
 

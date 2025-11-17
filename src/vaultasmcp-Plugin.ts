@@ -1,18 +1,21 @@
 import { Notice, Plugin } from "obsidian";
-import type { ServerStatus, VaultAsMCPSettings } from "./@types/settings";
+import type {
+    Logger,
+    ServerStatus,
+    VaultAsMCPSettings,
+} from "./@types/settings";
 import { DEFAULT_SETTINGS } from "./vaultasmcp-Constants";
 import { MCPServer } from "./vaultasmcp-Server";
 import { VaultAsMCPSettingsTab } from "./vaultasmcp-SettingsTab";
 
-export class VaultAsMCPPlugin extends Plugin {
+export class VaultAsMCPPlugin extends Plugin implements Logger {
     settings!: VaultAsMCPSettings;
     private server: MCPServer | null = null;
     private statusBarItem: HTMLElement | null = null;
     private serverStatus: ServerStatus = "stopped";
 
     async onload() {
-        console.log("Loading Vault as MCP Plugin");
-
+        console.info(`loading Vault as MCP (VMCP) v${this.manifest.version}`);
         await this.loadSettings();
 
         this.addSettingTab(new VaultAsMCPSettingsTab(this.app, this));
@@ -66,7 +69,7 @@ export class VaultAsMCPPlugin extends Plugin {
     }
 
     onunload() {
-        console.log("Unloading Vault as MCP Plugin");
+        console.info(`unloading Vault as MCP (VMCP) v${this.manifest.version}`);
         this.stopServer();
     }
 
@@ -100,7 +103,7 @@ export class VaultAsMCPPlugin extends Plugin {
             this.server = new MCPServer(
                 this.app,
                 this.settings.serverPort,
-                this.settings.logLevel,
+                this,
             );
 
             await this.server.start();
@@ -121,7 +124,7 @@ export class VaultAsMCPPlugin extends Plugin {
             } else {
                 new Notice(`Failed to start MCP Server: ${error.message}`);
             }
-            console.error("[VaultAsMCP] Failed to start server:", error);
+            this.error(error, "Failed to start server");
         }
     }
 
@@ -140,7 +143,7 @@ export class VaultAsMCPPlugin extends Plugin {
             new Notice("MCP Server stopped");
         } catch (error) {
             new Notice(`Failed to stop MCP Server: ${error.message}`);
-            console.error("[VaultAsMCP] Failed to stop server:", error);
+            this.error(error, "Failed to stop server");
         }
     }
 
@@ -191,5 +194,32 @@ export class VaultAsMCPPlugin extends Plugin {
 
     getServerStatus(): ServerStatus {
         return this.serverStatus;
+    }
+
+    debug(message: string, ...params: unknown[]): void {
+        if (this.settings?.debug) {
+            console.debug("(VMCP)", message, ...params);
+        }
+    }
+
+    info(message: string, ...params: unknown[]): void {
+        console.info("(VMCP)", message, ...params);
+    }
+
+    warn(message: string, ...params: unknown[]): void {
+        console.warn("(VMCP)", message, ...params);
+    }
+
+    error(error: unknown, message = "", ...params: unknown[]): string {
+        if (message) {
+            console.error("(VMCP)", message, error, ...params);
+            return message;
+        }
+        if (error instanceof Error) {
+            console.error("(VMCP)", error.message, error, ...params);
+            return error.message;
+        }
+        console.error("(VMCP)", error, ...params);
+        return String(error);
     }
 }

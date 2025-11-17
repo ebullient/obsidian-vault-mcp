@@ -1,9 +1,12 @@
 import type { App } from "obsidian";
 import { TFile } from "obsidian";
-import type { MCPTool } from "./@types/settings";
+import type { Logger, MCPTool } from "./@types/settings";
 
 export class MCPTools {
-    constructor(private app: App) {}
+    constructor(
+        private app: App,
+        private logger: Logger,
+    ) {}
 
     getToolDefinitions(): MCPTool[] {
         return [
@@ -309,7 +312,7 @@ export class MCPTools {
             try {
                 compiled.push(new RegExp(pattern));
             } catch (error) {
-                console.warn(`Invalid exclude pattern: ${pattern}`, error);
+                this.logger.warn(`Invalid exclude pattern: ${pattern}`, error);
             }
         }
         return compiled;
@@ -424,10 +427,10 @@ export class MCPTools {
                     );
                     expandedContent += `\n\n${quotedContent}`;
                 } catch (error) {
-                    console.warn(
+                    this.logger.error(
+                        error,
                         "Could not read linked file:",
                         cachedLink.link,
-                        error,
                     );
                 }
             }

@@ -1,10 +1,17 @@
 export interface VaultAsMCPSettings {
     serverPort: number;
     autoStart: boolean;
-    logLevel: "debug" | "info" | "warn" | "error";
+    debug: boolean;
 }
 
 export type ServerStatus = "stopped" | "running" | "error";
+
+export interface Logger {
+    debug(message: string, ...params: unknown[]): void;
+    info(message: string, ...params: unknown[]): void;
+    warn(message: string, ...params: unknown[]): void;
+    error(error: unknown, message?: string, ...params: unknown[]): string;
+}
 
 export interface MCPRequest {
     jsonrpc: "2.0";

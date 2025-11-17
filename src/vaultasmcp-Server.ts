@@ -2,21 +2,19 @@ import cors from "@fastify/cors";
 import type { FastifyInstance } from "fastify";
 import Fastify from "fastify";
 import type { App } from "obsidian";
-import type { MCPRequest } from "./@types/settings";
+import type { Logger, MCPRequest } from "./@types/settings";
 import { MCPHandler } from "./vaultasmcp-MCPHandler";
 
 export class MCPServer {
     private server: FastifyInstance | null = null;
     private mcpHandler: MCPHandler;
     private port: number;
+    private logger: Logger;
 
-    constructor(
-        app: App,
-        port: number,
-        logLevel: "debug" | "info" | "warn" | "error",
-    ) {
+    constructor(app: App, port: number, logger: Logger) {
         this.port = port;
-        this.mcpHandler = new MCPHandler(app, logLevel);
+        this.logger = logger;
+        this.mcpHandler = new MCPHandler(app, logger);
     }
 
     async start(): Promise<void> {
@@ -42,8 +40,8 @@ export class MCPServer {
         // MCP protocol endpoint
         this.server.post("/mcp", async (request, reply) => {
             const mcpRequest = request.body as MCPRequest;
-            console.log(
-                "[VaultAsMCP] Received request:",
+            this.logger.debug(
+                "Received request:",
                 mcpRequest.method,
                 mcpRequest.id !== undefined ? `(id: ${mcpRequest.id})` : "",
             );
@@ -52,16 +50,16 @@ export class MCPServer {
 
             // Notifications don't get responses
             if (response === null) {
-                console.log(
-                    "[VaultAsMCP] Sending 204 for notification:",
+                this.logger.debug(
+                    "Sending 204 for notification:",
                     mcpRequest.method,
                 );
                 reply.code(204).send();
                 return;
             }
 
-            console.log(
-                "[VaultAsMCP] Sending response for:",
+            this.logger.debug(
+                "Sending response for:",
                 mcpRequest.method,
                 mcpRequest.id,
             );
@@ -76,7 +74,7 @@ export class MCPServer {
                 port: this.port,
                 host: "0.0.0.0",
             });
-            console.log(`[VaultAsMCP] Server started on port ${this.port}`);
+            this.logger.info("Server started on port", this.port);
         } catch (error) {
             this.server = null;
             throw error;
@@ -90,7 +88,7 @@ export class MCPServer {
 
         try {
             await this.server.close();
-            console.log("[VaultAsMCP] Server stopped");
+            this.logger.info("Server stopped");
         } finally {
             this.server = null;
         }
