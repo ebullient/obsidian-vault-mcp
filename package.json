@@ -1,6 +1,6 @@
 {
   "name": "obsidian-vault-mcp",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Expose Obsidian vault as an MCP server via HTTP for external LLM tools",
   "main": "main.js",
   "scripts": {
