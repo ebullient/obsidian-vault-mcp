@@ -3,7 +3,7 @@
 	"name": "Vault as MCP",
 	"version": "0.6.1",
 	"minAppVersion": "1.9.0",
-	"description": "Expose Obsidian vault as an MCP server via HTTP for external LLM tools",
+	"description": "Expose your vault as an MCP server via HTTP for external LLM tools like Claude Desktop or Open WebUI",
 	"author": "ebullient",
 	"authorUrl": "https://github.com/ebullient",
 	"isDesktopOnly": true
