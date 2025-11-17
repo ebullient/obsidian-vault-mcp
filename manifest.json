@@ -1,7 +1,7 @@
 {
 	"id": "vault-as-mcp",
 	"name": "Vault as MCP",
-	"version": "0.1.0",
+	"version": "0.6.0",
 	"minAppVersion": "1.9.0",
 	"description": "Expose Obsidian vault as an MCP server via HTTP for external LLM tools",
 	"author": "ebullient",

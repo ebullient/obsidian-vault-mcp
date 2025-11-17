@@ -48,7 +48,7 @@ export class MCPHandler {
         } catch (error) {
             this.logger.error(error, "Error handling request");
             // Only respond to requests, not notifications
-            if (request.id !== undefined) {
+            if (request.id !== undefined && error instanceof Error) {
                 return this.createError(
                     request.id,
                     -32603,
@@ -107,11 +107,13 @@ export class MCPHandler {
             });
         } catch (error) {
             this.logger.error(error, `Tool ${toolName} failed`);
-            return this.createError(
-                request.id,
-                -32000,
-                `Tool execution failed: ${error.message}`,
-            );
+            if (error instanceof Error) {
+                return this.createError(
+                    request.id,
+                    -32000,
+                    `Tool execution failed: ${error.message}`,
+                );
+            }
         }
     }
 

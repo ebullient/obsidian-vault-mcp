@@ -74,7 +74,7 @@ export class MCPServer {
                 port: this.port,
                 host: "0.0.0.0",
             });
-            this.logger.info("Server started on port", this.port);
+            this.logger.debug("Server started on port", this.port);
         } catch (error) {
             this.server = null;
             throw error;
@@ -88,7 +88,7 @@ export class MCPServer {
 
         try {
             await this.server.close();
-            this.logger.info("Server stopped");
+            this.logger.debug("Server stopped");
         } finally {
             this.server = null;
         }

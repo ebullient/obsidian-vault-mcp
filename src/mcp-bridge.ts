@@ -52,6 +52,8 @@ async function forwardRequest(request: {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
 
+        // This bridge does not run in obsidian
+        // eslint-disable-next-line no-restricted-globals
         const response = await fetch(MCP_URL, {
             method: "POST",
             headers: {
@@ -73,7 +75,7 @@ async function forwardRequest(request: {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        const data = await response.json();
+        const data = (await response.json()) as unknown;
         log("debug", `Response received for ${request.method}`);
         return data;
     } catch (error) {
@@ -103,7 +105,7 @@ async function* readMessages(): AsyncGenerator<JsonRpcMessage, void, void> {
     let buffer = "";
 
     for await (const chunk of stdin) {
-        buffer += decoder.write(chunk);
+        buffer += decoder.write(chunk as Buffer);
 
         while (true) {
             const newlineIndex = buffer.indexOf("\n");
@@ -126,7 +128,7 @@ async function* readMessages(): AsyncGenerator<JsonRpcMessage, void, void> {
             }
 
             try {
-                const parsed = JSON.parse(line);
+                const parsed = JSON.parse(line) as JsonRpcMessage;
                 yield parsed;
             } catch (err) {
                 log("error", "Failed to parse JSON message:", err);
@@ -178,4 +180,4 @@ async function main(): Promise<void> {
 }
 
 // Start
-main();
+void main();

@@ -65,8 +65,10 @@ if (prod) {
         esbuild.build(bridgeParams)
     ]).catch((x) => {
         if (x.errors) {
+            // eslint-disable-next-line no-undef
             console.error(x.errors);
         } else {
+            // eslint-disable-next-line no-undef
             console.error(x);
         }
         process.exit(1)

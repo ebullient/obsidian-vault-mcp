@@ -1,4 +1,4 @@
-import { type App, PluginSettingTab, Setting } from "obsidian";
+import { type App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type { VaultAsMCPSettings } from "./@types/settings";
 import type { VaultAsMCPPlugin } from "./vaultasmcp-Plugin";
 
@@ -12,19 +12,26 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
     }
 
     async save() {
-        const needsRestart =
-            this.plugin.settings.serverPort !== this.newSettings.serverPort;
+        try {
+            const needsRestart =
+                this.plugin.settings.serverPort !== this.newSettings.serverPort;
 
-        this.plugin.settings = this.newSettings;
-        await this.plugin.saveSettings();
+            this.plugin.settings = this.newSettings;
+            await this.plugin.saveSettings();
 
-        if (needsRestart && this.plugin.getServerStatus() === "running") {
-            await this.plugin.restartServer();
+            if (needsRestart && this.plugin.getServerStatus() === "running") {
+                await this.plugin.restartServer();
+            }
+        } catch (error) {
+            new Notice("Failed to save settings");
+            this.plugin.error(error, "Save settings error");
         }
     }
 
     private cloneSettings(): VaultAsMCPSettings {
-        return JSON.parse(JSON.stringify(this.plugin.settings));
+        return JSON.parse(
+            JSON.stringify(this.plugin.settings),
+        ) as VaultAsMCPSettings;
     }
 
     async reset() {
@@ -48,8 +55,8 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                 button
                     .setButtonText("Reset")
                     .setTooltip("Reset to current saved settings")
-                    .onClick(() => {
-                        this.reset();
+                    .onClick(async () => {
+                        await this.reset();
                     }),
             )
             .addButton((button) =>
@@ -81,7 +88,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
         // Auto-start
         new Setting(containerEl)
             .setName("Auto-start server")
-            .setDesc("Automatically start the MCP server when Obsidian loads")
+            .setDesc("Automatically start the MCP server on startup")
             .addToggle((toggle) =>
                 toggle
                     .setValue(this.newSettings.autoStart)
@@ -115,16 +122,16 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
             switch (status) {
                 case "running":
                     statusText.setText(
-                        `✓ Server is running on port ${this.plugin.settings.serverPort}`,
+                        `🟢 server is running on port ${this.plugin.settings.serverPort}`,
                     );
                     statusText.addClass("vault-mcp-status-running");
                     break;
                 case "error":
-                    statusText.setText("✕ Server encountered an error");
+                    statusText.setText("🔴 server encountered an error");
                     statusText.addClass("vault-mcp-status-error");
                     break;
                 case "stopped":
-                    statusText.setText("○ Server is stopped");
+                    statusText.setText("⚪️ server is stopped");
                     statusText.addClass("vault-mcp-status-stopped");
                     break;
             }
@@ -151,19 +158,19 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
 
         new Setting(buttonContainer)
             .addButton((button) =>
-                button.setButtonText("Start Server").onClick(async () => {
+                button.setButtonText("Start server").onClick(async () => {
                     await this.plugin.startServer();
                     updateStatusDisplay();
                 }),
             )
             .addButton((button) =>
-                button.setButtonText("Stop Server").onClick(async () => {
+                button.setButtonText("Stop server").onClick(async () => {
                     await this.plugin.stopServer();
                     updateStatusDisplay();
                 }),
             )
             .addButton((button) =>
-                button.setButtonText("Restart Server").onClick(async () => {
+                button.setButtonText("Restart server").onClick(async () => {
                     await this.plugin.restartServer();
                     updateStatusDisplay();
                 }),
@@ -205,6 +212,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
 
     /** Save on exit */
     hide(): void {
-        this.save();
+        // trigger save, but don't wait for it
+        void this.save();
     }
 }

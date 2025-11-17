@@ -1,5 +1,6 @@
 import { Notice, Plugin } from "obsidian";
 import type {
+    ConnectionError,
     Logger,
     ServerStatus,
     VaultAsMCPSettings,
@@ -15,7 +16,7 @@ export class VaultAsMCPPlugin extends Plugin implements Logger {
     private serverStatus: ServerStatus = "stopped";
 
     async onload() {
-        console.info(`loading Vault as MCP (VMCP) v${this.manifest.version}`);
+        console.debug(`loading Vault as MCP (VMCP) v${this.manifest.version}`);
         await this.loadSettings();
 
         this.addSettingTab(new VaultAsMCPSettingsTab(this.app, this));
@@ -34,50 +35,52 @@ export class VaultAsMCPPlugin extends Plugin implements Logger {
 
         // Make status bar clickable to toggle server
         this.statusBarItem.addEventListener("click", () => {
-            this.toggleServer();
+            void this.toggleServer();
         });
 
         // Add commands
         this.addCommand({
             id: "start-server",
-            name: "Start MCP Server",
+            name: "Start MCP server",
             callback: () => {
-                this.startServer();
+                void this.startServer();
             },
         });
 
         this.addCommand({
             id: "stop-server",
-            name: "Stop MCP Server",
+            name: "Stop MCP server",
             callback: () => {
-                this.stopServer();
+                void this.stopServer();
             },
         });
 
         this.addCommand({
             id: "restart-server",
-            name: "Restart MCP Server",
+            name: "Restart MCP server",
             callback: () => {
-                this.restartServer();
+                void this.restartServer();
             },
         });
 
         // Auto-start if enabled
         if (this.settings.autoStart) {
-            this.startServer();
+            void this.startServer();
         }
     }
 
     onunload() {
-        console.info(`unloading Vault as MCP (VMCP) v${this.manifest.version}`);
-        this.stopServer();
+        console.debug(
+            `unloading Vault as MCP (VMCP) v${this.manifest.version}`,
+        );
+        void this.stopServer();
     }
 
     async loadSettings() {
         this.settings = Object.assign(
             {},
             DEFAULT_SETTINGS,
-            await this.loadData(),
+            (await this.loadData()) as VaultAsMCPSettings,
         );
     }
 
@@ -95,7 +98,7 @@ export class VaultAsMCPPlugin extends Plugin implements Logger {
 
     async startServer(): Promise<void> {
         if (this.server?.isRunning()) {
-            new Notice("MCP Server is already running");
+            new Notice("MCP server is already running");
             return;
         }
 
@@ -111,26 +114,27 @@ export class VaultAsMCPPlugin extends Plugin implements Logger {
             this.updateStatusBar();
 
             new Notice(
-                `MCP Server started on port ${this.settings.serverPort}`,
+                `MCP server started on port ${this.settings.serverPort}`,
             );
         } catch (error) {
             this.serverStatus = "error";
             this.updateStatusBar();
 
-            if (error.code === "EADDRINUSE") {
+            const errorMsg = this.error(error);
+            const connError = error as ConnectionError;
+            if (connError.code === "EADDRINUSE") {
                 new Notice(
                     `Port ${this.settings.serverPort} is already in use. Please change the port in settings.`,
                 );
             } else {
-                new Notice(`Failed to start MCP Server: ${error.message}`);
+                new Notice(`Failed to start MCP server: ${errorMsg}`);
             }
-            this.error(error, "Failed to start server");
         }
     }
 
     async stopServer(): Promise<void> {
         if (!this.server) {
-            new Notice("MCP Server is not running");
+            new Notice("MCP server is not running");
             return;
         }
 
@@ -140,10 +144,10 @@ export class VaultAsMCPPlugin extends Plugin implements Logger {
             this.serverStatus = "stopped";
             this.updateStatusBar();
 
-            new Notice("MCP Server stopped");
+            new Notice("MCP server stopped");
         } catch (error) {
-            new Notice(`Failed to stop MCP Server: ${error.message}`);
-            this.error(error, "Failed to stop server");
+            const msg = this.error(error, "Failed to stop server");
+            new Notice(msg);
         }
     }
 
@@ -166,26 +170,26 @@ export class VaultAsMCPPlugin extends Plugin implements Logger {
 
         switch (this.serverStatus) {
             case "running":
-                this.statusBarItem.setText(`MCP:${port} ●`);
+                this.statusBarItem.setText(`MCP:${port} 🟢`);
                 this.statusBarItem.setAttribute(
                     "aria-label",
-                    "MCP Server running. Click to stop.",
+                    "MCP server running. Click to stop.",
                 );
                 this.statusBarItem.addClass("vault-mcp-status-running");
                 break;
             case "error":
-                this.statusBarItem.setText(`MCP:${port} ✕`);
+                this.statusBarItem.setText(`MCP:${port} 🔴`);
                 this.statusBarItem.setAttribute(
                     "aria-label",
-                    "MCP Server error. Click to retry.",
+                    "MCP server error. Click to retry.",
                 );
                 this.statusBarItem.addClass("vault-mcp-status-error");
                 break;
             case "stopped":
-                this.statusBarItem.setText(`MCP:${port} ○`);
+                this.statusBarItem.setText(`MCP:${port} ⚪️`);
                 this.statusBarItem.setAttribute(
                     "aria-label",
-                    "MCP Server stopped. Click to start.",
+                    "MCP server stopped. Click to start.",
                 );
                 this.statusBarItem.addClass("vault-mcp-status-stopped");
                 break;
@@ -200,10 +204,6 @@ export class VaultAsMCPPlugin extends Plugin implements Logger {
         if (this.settings?.debug) {
             console.debug("(VMCP)", message, ...params);
         }
-    }
-
-    info(message: string, ...params: unknown[]): void {
-        console.info("(VMCP)", message, ...params);
     }
 
     warn(message: string, ...params: unknown[]): void {

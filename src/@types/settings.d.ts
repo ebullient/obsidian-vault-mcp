@@ -8,9 +8,13 @@ export type ServerStatus = "stopped" | "running" | "error";
 
 export interface Logger {
     debug(message: string, ...params: unknown[]): void;
-    info(message: string, ...params: unknown[]): void;
     warn(message: string, ...params: unknown[]): void;
     error(error: unknown, message?: string, ...params: unknown[]): string;
+}
+
+// From Fastify
+export interface ConnectionError extends Error {
+    code: string;
 }
 
 export interface MCPRequest {
