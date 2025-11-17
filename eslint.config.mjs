@@ -1,27 +1,18 @@
 // eslint.config.mjs
 import globals from "globals";
 import tsparser from "@typescript-eslint/parser";
-import { defineConfig } from "eslint/config";
+import { defineConfig, globalIgnores } from "eslint/config";
 import obsidianmd from "eslint-plugin-obsidianmd";
 
 export default defineConfig([
     ...obsidianmd.configs.recommended,
+    globalIgnores([
+        "tests/",
+        "*.mjs",
+        "package.json"
+    ]),
     {
-        // Global rule overrides for all files
-        rules: {
-            "depend/ban-dependencies": [
-                "error",
-                {
-                    allowed: [
-                        "moment",
-                        "builtin-modules",
-                    ],
-                },
-            ],
-        },
-    },
-    {
-        files: ["**/*.ts"],
+        files: ["src/**/*.ts"],
         languageOptions: {
             parser: tsparser,
             parserOptions: {
