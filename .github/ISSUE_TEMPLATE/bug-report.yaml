@@ -1,0 +1,121 @@
+name: Bug Report
+description: File a bug report
+title: "🐛 "
+labels: ["type: bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Before you start
+
+        - Check for plugin updates and make sure you're running the latest version.
+        - Restart Obsidian and restart the MCP server
+        - Check the browser console or developer tools for error messages
+        - Look at existing bug reports to see if your issue has already been reported
+        - Is this actually a bug? If this is something you wish the plugin could do, please submit a feature request instead
+
+        **Note**: This plugin is desktop-only and will not work on mobile devices.
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Current behaviour
+      description: |
+        Describe what actually happened.
+
+        Screenshots or short recordings help, especially if the issue is visual.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Which exact steps can a developer take to reproduce the issue?
+        The more detail you provide, the easier it will be to narrow down and fix the bug.
+      placeholder: |
+        1. Start the MCP server via status bar or command palette
+        2. Connect from Open WebUI/Claude Desktop to http://localhost:8765/mcp
+        3. Execute a specific MCP tool (e.g., read_note, search_notes)
+        4. Observe the error...
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: operating-systems
+    attributes:
+      label: Which Operating System are you using?
+      description: Desktop only (this plugin does not work on mobile)
+      options:
+        - label: Linux
+        - label: macOS
+        - label: Windows
+
+  - type: input
+    id: obsidian-version
+    attributes:
+      label: Obsidian Version
+      description: Which Obsidian version are you using?
+      placeholder: 0.15.9
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin Version
+      description: Which plugin version are you using?
+      placeholder: 0.6.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mcp-client
+    attributes:
+      label: MCP Client
+      description: Which MCP client are you connecting from?
+      options:
+        - Open WebUI
+        - Claude Desktop (via mcp-bridge.js)
+        - Other (please specify in description)
+        - Not applicable (plugin issue)
+    validations:
+      required: true
+
+  - type: input
+    id: server-port
+    attributes:
+      label: Server Port
+      description: What port is the MCP server configured to use?
+      placeholder: "8765"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      description: Please confirm
+      options:
+        - label: The server status shows as "running" in Obsidian
+          required: false
+        - label: I have tried restarting both Obsidian and the MCP server
+          required: false
+        - label: I checked the developer console for error messages
+          required: false
+
+  - type: textarea
+    id: possible-solution
+    attributes:
+      label: Possible solution
+      description: |
+        Not obligatory, but please suggest a fix or reason for the bug, if you have an idea.

@@ -1,0 +1,57 @@
+name: Feature Request
+description: Request a new feature
+title: "✨ "
+labels: ["type: enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Feature Request
+
+        This can include:
+        - New MCP tools (e.g., note creation, modification, task management)
+        - Server configuration options
+        - Integration improvements with Open WebUI or Claude Desktop
+        - Performance or reliability enhancements
+
+  - type: textarea
+    id: feature-description
+    validations:
+      required: true
+    attributes:
+      label: "🔖 Feature description"
+      description: |
+        A clear and concise description of what the feature request is.
+        Include your use case and how it would help your workflow.
+
+        Examples:
+        - I would like to be able to create new notes via MCP. This would help me capture ideas from Claude Desktop.
+        - I find it difficult to manage tasks across multiple notes. A tool to aggregate tasks would help.
+      placeholder: "Describe the feature..."
+
+  - type: textarea
+    id: solution
+    validations:
+      required: true
+    attributes:
+      label: "✔️ Solution"
+      description: "A clear and concise description of what you want to happen."
+      placeholder: "In my use-case, ..."
+
+  - type: textarea
+    id: alternatives
+    validations:
+      required: false
+    attributes:
+      label: "❓ Alternatives"
+      description: "A clear and concise description of any alternative solutions or features you've considered."
+      placeholder: "I have considered ..."
+
+  - type: textarea
+    id: additional-context
+    validations:
+      required: false
+    attributes:
+      label: "📝 Additional Context"
+      description: "Add any other context or screenshots about the feature request here."
+      placeholder: "..."
