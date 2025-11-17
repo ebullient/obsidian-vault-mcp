@@ -1,7 +1,7 @@
 {
   "name": "obsidian-vault-mcp",
   "version": "0.6.1",
-  "description": "Expose Obsidian vault as an MCP server via HTTP for external LLM tools",
+  "description": "MCP server connecting Open WebUI, Claude Desktop, and other LLMs to your vault.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

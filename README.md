@@ -1,6 +1,6 @@
 # Vault as MCP
 
-An Obsidian plugin that exposes your vault as an MCP (Model Context Protocol) server via HTTP, enabling external LLM tools like Open WebUI to interact with your notes.
+An Obsidian plugin that runs an MCP (Model Context Protocol) server, enabling external LLM tools to access your vault. Supports HTTP transport natively (Open WebUI, remote LLMs) and stdio transport via included bridge script (Claude Desktop).
 
 > **Important Notes**
 >

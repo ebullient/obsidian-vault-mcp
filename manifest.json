@@ -3,7 +3,7 @@
 	"name": "Vault as MCP",
 	"version": "0.6.1",
 	"minAppVersion": "1.9.0",
-	"description": "Expose your vault as an MCP server via HTTP for external LLM tools like Claude Desktop or Open WebUI",
+	"description": "MCP server connecting Open WebUI, Claude Desktop, and other LLMs to your vault.",
 	"author": "ebullient",
 	"authorUrl": "https://github.com/ebullient",
 	"isDesktopOnly": true
