@@ -41,8 +41,6 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
 
         containerEl.empty();
 
-        new Setting(containerEl).setName("Vault as MCP").setHeading();
-
         new Setting(containerEl)
             .setName("Save settings")
             .setClass("vault-mcp-save-reset")
