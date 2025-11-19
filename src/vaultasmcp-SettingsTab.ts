@@ -1,6 +1,7 @@
 import { type App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type { VaultAsMCPSettings } from "./@types/settings";
 import type { VaultAsMCPPlugin } from "./vaultasmcp-Plugin";
+import { MCPTools } from "./vaultasmcp-Tools";
 
 export class VaultAsMCPSettingsTab extends PluginSettingTab {
     plugin: VaultAsMCPPlugin;
@@ -180,33 +181,15 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
         new Setting(containerEl).setName("Available MCP tools").setHeading();
 
         const toolsList = containerEl.createEl("ul");
-        const tools = [
-            {
-                name: "read_note",
-                desc: "Read the full content of a note by path",
-            },
-            {
-                name: "search_notes",
-                desc: "Search notes by tag, folder, or text content",
-            },
-            {
-                name: "get_linked_notes",
-                desc: "Get all notes linked from a specific note",
-            },
-            {
-                name: "list_incomplete_tasks",
-                desc: "Find incomplete tasks in a note or folder",
-            },
-            {
-                name: "list_notes_by_tag",
-                desc: "Get all notes with specific tag(s)",
-            },
-        ];
+
+        // Fetch tool definitions dynamically from MCPTools
+        const mcpTools = new MCPTools(this.app, this.plugin);
+        const tools = mcpTools.getToolDefinitions();
 
         for (const tool of tools) {
             const li = toolsList.createEl("li");
             li.createEl("strong", { text: tool.name });
-            li.appendText(`: ${tool.desc}`);
+            li.appendText(`: ${tool.description}`);
         }
     }
 

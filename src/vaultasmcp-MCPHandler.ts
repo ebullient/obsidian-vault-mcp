@@ -107,13 +107,13 @@ export class MCPHandler {
             });
         } catch (error) {
             this.logger.error(error, `Tool ${toolName} failed`);
-            if (error instanceof Error) {
-                return this.createError(
-                    request.id,
-                    -32000,
-                    `Tool execution failed: ${error.message}`,
-                );
-            }
+            const message =
+                error instanceof Error ? error.message : String(error);
+            return this.createError(
+                request.id,
+                -32000,
+                `Tool execution failed: ${message}`,
+            );
         }
     }
 

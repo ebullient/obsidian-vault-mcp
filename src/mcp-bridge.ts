@@ -82,6 +82,11 @@ async function forwardRequest(request: {
         const message = error instanceof Error ? error.message : String(error);
         log("error", `Request failed: ${message}`);
 
+        // Don't send responses for notifications
+        if (request.id === undefined) {
+            return null;
+        }
+
         // Return JSON-RPC error response
         return {
             jsonrpc: "2.0",

@@ -1,12 +1,33 @@
 // eslint-disable-next-line no-restricted-imports
 import type { Moment } from "moment";
-import { type App, moment, normalizePath, TFile, TFolder } from "obsidian";
 import {
+    type App,
+    getAllTags,
+    moment,
+    normalizePath,
+    TFile,
+    TFolder,
+} from "obsidian";
+import {
+    appHasDailyNotesPluginLoaded,
+    appHasMonthlyNotesPluginLoaded,
+    appHasQuarterlyNotesPluginLoaded,
+    appHasWeeklyNotesPluginLoaded,
+    appHasYearlyNotesPluginLoaded,
     getPeriodicNoteSettings,
     type IGranularity,
 } from "obsidian-daily-notes-interface";
 import type { Logger, MCPTool } from "./@types/settings";
 import { TemplateHandler } from "./vaultasmcp-TemplateHandler";
+
+const MAX_DEPTH = 2;
+type EmbeddedLink = {
+    subpaths: Set<string>; // headings, blockrefs
+    hasFullReference: boolean;
+    file: TFile | null; // null for unresolved links
+    depth: number;
+};
+type EmbeddedNotes = Map<string, EmbeddedLink>;
 
 export class MCPTools {
     private templateHandler: TemplateHandler;
@@ -221,6 +242,30 @@ export class MCPTools {
                 },
             },
             {
+                name: "update_note",
+                description:
+                    "Update an existing note by replacing its entire content. " +
+                    "Fails if note does not exist.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        path: {
+                            type: "string",
+                            description:
+                                "The path to the note " +
+                                "(e.g., 'folder/note.md')",
+                        },
+                        content: {
+                            type: "string",
+                            description:
+                                "The new content that will replace " +
+                                "the entire file content",
+                        },
+                    },
+                    required: ["path", "content"],
+                },
+            },
+            {
                 name: "delete_note",
                 description:
                     "Delete a note by moving it to the system trash. " +
@@ -325,6 +370,11 @@ export class MCPTools {
                     args.heading as string | undefined,
                     args.separator as string | undefined,
                 );
+            case "update_note":
+                return await this.updateNote(
+                    args.path as string,
+                    args.content as string,
+                );
             case "delete_note":
                 return await this.deleteNote(args.path as string);
             case "get_periodic_note_path":
@@ -421,28 +471,40 @@ export class MCPTools {
 
         // Read existing content
         const existingContent = await this.app.vault.read(file);
-        const lines = existingContent.split("\n");
-
-        let newContent: string;
-
         if (heading) {
             // Heading-based insertion
-            const insertLine = this.findHeadingEnd(file, heading);
-            if (insertLine === undefined) {
+            const insertOffset = this.findHeadingEndOffset(file, heading);
+            if (insertOffset === undefined) {
                 throw new Error(`Heading not found: ${heading}`);
             }
 
-            // Insert at the end of the heading section
-            lines[insertLine - 1] =
-                (lines[insertLine - 1] ?? "") + separator + content;
-            newContent = lines.join("\n");
+            const before = existingContent.slice(0, insertOffset);
+            const after = existingContent.slice(insertOffset);
+            const addition = `${separator}${content}`;
+            const newContent = `${before}${addition}${after}`;
+            await this.app.vault.modify(file, newContent);
         } else {
             // Append to end of file
-            newContent = existingContent + separator + content;
+            const newContent = existingContent + separator + content;
+            await this.app.vault.modify(file, newContent);
         }
 
-        // Write back
-        await this.app.vault.modify(file, newContent);
+        return { path: file.path };
+    }
+
+    private async updateNote(
+        path: string,
+        content: string,
+    ): Promise<{ path: string }> {
+        const normalizedPath = normalizePath(path);
+        const file = this.app.vault.getAbstractFileByPath(normalizedPath);
+
+        if (!(file instanceof TFile)) {
+            throw new Error(`Note not found: ${normalizedPath}`);
+        }
+
+        // Replace entire content
+        await this.app.vault.modify(file, content);
 
         return { path: file.path };
     }
@@ -481,10 +543,49 @@ export class MCPTools {
 
         const targetDate = date ? moment(date) : moment();
 
-        // Use obsidian-daily-notes-interface for clean plugin access
-        const settings = getPeriodicNoteSettings(granularity);
+        const settings = this.getPeriodicSettings(period, granularity);
 
         return this.buildPeriodicPath(targetDate, settings);
+    }
+
+    private getPeriodicSettings(
+        period: string,
+        granularity: IGranularity,
+    ): { format?: string; folder?: string } {
+        const pluginChecks: Record<IGranularity, () => boolean> = {
+            day: appHasDailyNotesPluginLoaded,
+            week: appHasWeeklyNotesPluginLoaded,
+            month: appHasMonthlyNotesPluginLoaded,
+            quarter: appHasQuarterlyNotesPluginLoaded,
+            year: appHasYearlyNotesPluginLoaded,
+        };
+
+        const pluginAvailable = pluginChecks[granularity]?.() ?? false;
+        if (!pluginAvailable) {
+            throw new Error(this.periodicSupportMessage(period));
+        }
+
+        const settings = getPeriodicNoteSettings(granularity);
+        if (!settings) {
+            throw new Error(this.periodicSupportMessage(period));
+        }
+
+        return settings;
+    }
+
+    private periodicSupportMessage(period: string): string {
+        if (period === "daily") {
+            return (
+                "Daily notes are not configured. " +
+                "Enable the Daily Notes core plugin or Periodic Notes."
+            );
+        }
+
+        const label = period.charAt(0).toUpperCase() + period.slice(1);
+        return (
+            `${label} notes are not configured. ` +
+            "Enable the Periodic Notes plugin for this period."
+        );
     }
 
     private buildPeriodicPath(
@@ -523,12 +624,15 @@ export class MCPTools {
         return newParts.join("/");
     }
 
-    private findHeadingEnd(file: TFile, heading: string): number | undefined {
+    private findHeadingEndOffset(
+        file: TFile,
+        heading: string,
+    ): number | undefined {
         const cache = this.app.metadataCache.getFileCache(file);
-        if (!cache || !cache.sections) return undefined;
+        if (!cache?.sections || !cache.headings) return undefined;
 
         const sections = cache.sections;
-        const foundHeading = cache.headings?.find((h) => h.heading === heading);
+        const foundHeading = cache.headings.find((h) => h.heading === heading);
 
         if (!foundHeading) return undefined;
 
@@ -548,19 +652,19 @@ export class MCPTools {
 
         // Find the next heading to determine section boundary
         const nextHeadingIndex = restSections.findIndex(
-            (e) => e.type === "heading",
+            (section) => section.type === "heading",
         );
 
-        // Get the last section before the next heading (or end of file)
-        const lastSection =
-            restSections[
-                (nextHeadingIndex !== -1
-                    ? nextHeadingIndex
-                    : restSections.length) - 1
-            ] ?? sections[foundSectionIndex];
+        const relevantSections =
+            nextHeadingIndex === -1
+                ? restSections
+                : restSections.slice(0, nextHeadingIndex);
 
-        // Return 1-indexed line number
-        return lastSection.position.end.line + 1;
+        const lastSection =
+            relevantSections[relevantSections.length - 1] ??
+            sections[foundSectionIndex];
+
+        return lastSection.position.end.offset;
     }
 
     private base64ToArrayBuffer(base64: string): ArrayBuffer {
@@ -584,14 +688,16 @@ export class MCPTools {
         }
 
         if (tag) {
-            const normalizedTag = tag.startsWith("#") ? tag.substring(1) : tag;
+            const normalizedTag = this.normalizeTag(tag);
             files = files.filter((f) => {
                 const cache = this.app.metadataCache.getFileCache(f);
-                const tags = cache?.tags?.map((t) => t.tag.substring(1)) || [];
-                const frontmatterTags =
-                    (cache?.frontmatter?.tags as string[]) || [];
-                const allTags = [...tags, ...frontmatterTags];
-                return allTags.includes(normalizedTag);
+                if (!cache) {
+                    return false;
+                }
+                const allTags = getAllTags(cache) || [];
+                return allTags.some(
+                    (t) => this.normalizeTag(t) === normalizedTag,
+                );
             });
         }
 
@@ -661,17 +767,17 @@ export class MCPTools {
     }
 
     private async listNotesByTag(tags: string[]): Promise<{ notes: string[] }> {
-        const normalizedTags = tags.map((t) =>
-            t.startsWith("#") ? t.substring(1) : t,
-        );
+        const normalizedTags = tags.map((t) => this.normalizeTag(t));
         const files = this.app.vault.getMarkdownFiles();
 
         const matchingFiles = files.filter((f) => {
             const cache = this.app.metadataCache.getFileCache(f);
-            const fileTags = cache?.tags?.map((t) => t.tag.substring(1)) || [];
-            const frontmatterTags =
-                (cache?.frontmatter?.tags as string[]) || [];
-            const allTags = [...fileTags, ...frontmatterTags];
+            if (!cache) {
+                return false;
+            }
+            const allTags = (getAllTags(cache) || []).map((t) =>
+                this.normalizeTag(t),
+            );
 
             return normalizedTags.some((tag) => allTags.includes(tag));
         });
@@ -695,7 +801,7 @@ export class MCPTools {
         const compiledPatterns = this.compileExcludePatterns(
             excludePatterns || [],
         );
-        const expandedContent = await this.expandEmbeds(
+        const expandedContent = await this.expandLinkedFiles(
             file,
             content,
             compiledPatterns,
@@ -703,6 +809,10 @@ export class MCPTools {
         );
 
         return { content: expandedContent };
+    }
+
+    private normalizeTag(tag: string): string {
+        return tag.startsWith("#") ? tag.substring(1) : tag;
     }
 
     private compileExcludePatterns(patterns: string[]): RegExp[] {
@@ -739,105 +849,170 @@ export class MCPTools {
         };
     }
 
-    private async expandEmbeds(
+    private async expandLinkedFiles(
         sourceFile: TFile,
         content: string,
         excludePatterns: RegExp[] = [],
         includeLinks = false,
-        depth = 0,
-        processedFiles = new Set<string>(),
     ): Promise<string> {
-        // Limit nesting to 2 levels
-        if (depth >= 2) {
-            return content;
-        }
-
-        // Mark this file as processed to prevent circular references
-        processedFiles.add(sourceFile.path);
-
-        let expandedContent = content;
-        const fileCache = this.app.metadataCache.getFileCache(sourceFile);
-
+        let fileCache = this.app.metadataCache.getFileCache(sourceFile);
         if (!fileCache) {
             return content;
         }
 
-        const processedLinks = new Set<string>();
+        const seenLinks: EmbeddedNotes = new Map();
+        const fileQueue: EmbeddedLink[] = [];
 
-        // Process both links and embeds
-        // Only include regular links if includeLinks is true
-        const allLinks = [
-            ...(includeLinks ? fileCache.links || [] : []),
-            ...(fileCache.embeds || []),
-        ].filter((link) => link);
+        // Track seen files to prevent duplicates (using normalized TFile paths)
+        const origin = {
+            hasFullReference: true,
+            subpaths: new Set<string>(),
+            file: sourceFile,
+            depth: 0,
+        };
+        seenLinks.set(sourceFile.path, origin);
+        fileQueue.push(origin);
 
-        for (const cachedLink of allLinks) {
-            // Skip if link matches exclusion patterns
-            if (this.shouldExcludeLink(cachedLink, excludePatterns)) {
+        // Phase 1: Process queue breadth-first
+        // We are not gathering content at this time: we're only resolving
+        // files and links.
+        let embeddedLink = fileQueue.shift();
+        while (embeddedLink) {
+            // Skip if file wasn't found (null) or the link depth has been reached
+            if (!embeddedLink.file || embeddedLink.depth >= MAX_DEPTH) {
+                embeddedLink = fileQueue.shift();
                 continue;
             }
 
-            // Skip if we've already processed this link target
-            if (processedLinks.has(cachedLink.link)) {
-                continue;
-            }
-            processedLinks.add(cachedLink.link);
+            fileCache = this.app.metadataCache.getFileCache(embeddedLink.file);
+            if (fileCache) {
+                // Process both links and embeds
+                // Only include regular links if includeLinks is true
+                const allLinks = [
+                    ...(includeLinks ? fileCache.links || [] : []),
+                    ...(fileCache.embeds || []),
+                ].filter((link) => link);
 
-            // Parse link to extract path and subpath
-            const { path, subpath } = this.parseLinkReference(cachedLink.link);
+                for (const cachedLink of allLinks) {
+                    // Skip if link matches exclusion patterns
+                    if (this.shouldExcludeLink(cachedLink, excludePatterns)) {
+                        continue;
+                    }
 
-            const targetFile = this.app.metadataCache.getFirstLinkpathDest(
-                path,
-                sourceFile.path,
-            );
+                    // Check if we've already seen this link (use raw link)
+                    const linkKey = cachedLink.link;
+                    if (seenLinks.has(linkKey)) {
+                        continue; // already processed
+                    }
 
-            if (targetFile) {
-                // Skip if circular reference
-                if (processedFiles.has(targetFile.path)) {
-                    continue;
+                    // Parse link to extract path and subpath
+                    const { path, subpath } = this.parseLinkReference(
+                        cachedLink.link,
+                    );
+                    const targetFile =
+                        this.app.metadataCache.getFirstLinkpathDest(
+                            path,
+                            embeddedLink.file.path,
+                        );
+
+                    if (!targetFile) {
+                        this.logger.debug(
+                            `Link target not found: ${cachedLink.link} ` +
+                                `(from ${embeddedLink.file.path})`,
+                        );
+                        // Add to seen list to avoid checking again (but don't queue)
+                        seenLinks.set(linkKey, {
+                            hasFullReference: false,
+                            subpaths: new Set<string>(),
+                            file: null,
+                            depth: embeddedLink.depth + 1,
+                        });
+                        continue; // to next link
+                    }
+
+                    const key = targetFile.path;
+                    let ref = seenLinks.get(key);
+                    if (!ref) {
+                        // create ref if missing
+                        ref = {
+                            hasFullReference: false,
+                            subpaths: new Set<string>(),
+                            file: targetFile,
+                            depth: embeddedLink.depth + 1,
+                        };
+                        seenLinks.set(key, ref);
+                        fileQueue.push(ref); // new link to visit
+                        this.logger.debug(
+                            "Link",
+                            embeddedLink.file.path,
+                            " ➡ ",
+                            targetFile.path,
+                        );
+                    }
+
+                    // add subpath or indicate there is a full/whole note reference
+                    if (!subpath) {
+                        ref.hasFullReference = true;
+                    } else {
+                        ref.subpaths.add(subpath);
+                    }
                 }
+            }
+            embeddedLink = fileQueue.shift();
+        }
 
-                try {
-                    const linkedContent =
-                        await this.app.vault.cachedRead(targetFile);
-                    const extractedContent = subpath
-                        ? this.extractSubpathContent(
-                              targetFile,
-                              linkedContent,
-                              subpath,
-                          )
-                        : linkedContent;
+        // Phase 2: Collect content.
+        // Read each referenced file, and append
+        const expandedContent = [];
+        seenLinks.delete(sourceFile.path); // remove sourcefile
+        this.logger.debug(
+            `Collecting content from ${seenLinks.size} linked files`,
+        );
+        for (const link of seenLinks.values()) {
+            // Skip null file entries (unresolved links)
+            // and non-markdown files
+            if (!link.file || link.file.extension !== "md") {
+                continue;
+            }
 
-                    // Recursively expand embeds in the embedded content
-                    const fullyExpandedContent = await this.expandEmbeds(
-                        targetFile,
-                        extractedContent,
-                        excludePatterns,
-                        includeLinks,
-                        depth + 1,
-                        processedFiles,
+            const fileContent = await this.app.vault.cachedRead(link.file);
+            if (link.hasFullReference) {
+                // emit whole file once
+                expandedContent.push(
+                    `===== BEGIN ENTRY: ${link.file.path} =====`,
+                );
+                expandedContent.push(fileContent);
+                expandedContent.push("===== END ENTRY =====\n");
+            } else {
+                // emit each subpath snippet
+                for (const subpath of link.subpaths) {
+                    expandedContent.push(
+                        `===== BEGIN ENTRY: ${link.file.path}#${subpath} =====`,
                     );
-
-                    // Format as markdown section
-                    const quotedContent = this.formatAsEmbedSection(
-                        fullyExpandedContent,
-                        cachedLink.link,
-                        depth,
+                    expandedContent.push(
+                        this.extractSubpathContent(
+                            link.file,
+                            fileContent,
+                            subpath,
+                        ),
                     );
-                    expandedContent += `\n\n${quotedContent}`;
-                } catch (error) {
-                    this.logger.error(
-                        error,
-                        "Could not read linked file:",
-                        cachedLink.link,
-                    );
+                    expandedContent.push("===== END ENTRY =====\n");
                 }
             }
         }
 
-        return expandedContent;
+        if (expandedContent.length) {
+            return (
+                content +
+                "\n----- EMBEDDED/LINKED CONTENT -----\n" +
+                expandedContent.join("\n")
+            );
+        }
+        return content;
     }
 
+    // Subset of full document content.
+    // If the subpath isn't found, return empty.
     private extractSubpathContent(
         file: TFile,
         fileContent: string,
@@ -845,7 +1020,7 @@ export class MCPTools {
     ): string {
         const cache = this.app.metadataCache.getFileCache(file);
         if (!cache) {
-            return fileContent;
+            return "";
         }
 
         // Check for block reference (^block-id)
@@ -853,10 +1028,15 @@ export class MCPTools {
             const blockId = subpath.substring(1);
             const block = cache.blocks?.[blockId];
             if (block) {
-                const lines = fileContent.split("\n");
-                return lines[block.position.start.line] || "";
+                // Extract the full block content using offsets
+                const start = block.position.start.offset;
+                const end = block.position.end.offset;
+                return fileContent.substring(start, end).trim();
             }
-            return fileContent;
+            this.logger.debug(
+                `Block reference not found: ^${blockId} in ${file.path}`,
+            );
+            return "";
         }
 
         // Check for heading reference
@@ -882,20 +1062,8 @@ export class MCPTools {
             return fileContent.substring(start, end).trim();
         }
 
-        return fileContent;
-    }
-
-    private formatAsEmbedSection(
-        content: string,
-        linkTarget: string,
-        depth: number,
-    ): string {
-        const prefix = ">".repeat(depth + 1);
-        const lines = content
-            .split("\n")
-            .map((line) => `${prefix} ${line}`)
-            .join("\n");
-        const header = `${prefix} **Embedded: ${linkTarget}**`;
-        return `${header}\n${lines}`;
+        // If no matching subpath found, return empty
+        this.logger.debug(`Subpath not found: #${subpath} in ${file.path}`);
+        return "";
     }
 }

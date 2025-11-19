@@ -22,6 +22,7 @@ An Obsidian plugin that runs an MCP (Model Context Protocol) server, enabling ex
     - `read_note_with_embeds` - Read note with embedded content expanded
     - `create_note` - Create notes from templates or with direct content
     - `append_to_note` - Append content to an existing note
+    - `update_note` - Update an existing note by replacing its entire content
     - `delete_note` - Delete a note (moves to system trash)
     - `get_periodic_note_path` - Get path for periodic notes (daily/weekly/monthly/quarterly/yearly)
     - `list_templates` - List available templates and templating plugins
@@ -313,6 +314,34 @@ Append content to an existing note. Can append to the end of the file or after a
 - Heading must match exactly (including `##` markers)
 - Content is appended at the end of the heading's section
 - Use `create_note` first if the note might not exist
+- Returns the note's path
+
+### update_note
+
+Update an existing note by replacing its entire content. This is useful when you need to make extensive changes to a note.
+
+**Parameters:**
+
+- `path` (string, required): Path to the note (e.g., `"folder/note.md"`)
+- `content` (string, required): The new content that will replace the entire file
+
+**Example:**
+
+```json
+{
+  "name": "update_note",
+  "arguments": {
+    "path": "Projects/roadmap.md",
+    "content": "# Updated Roadmap\n\n## Q1 2025\n\n- [x] Feature A\n- [ ] Feature B"
+  }
+}
+```
+
+**Notes:**
+
+- Fails with an error if the note does not exist
+- Replaces the entire file content (not a partial update)
+- Typical workflow: use `read_note` first, modify content, then `update_note`
 - Returns the note's path
 
 ### delete_note
