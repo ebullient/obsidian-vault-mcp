@@ -14,12 +14,17 @@ An Obsidian plugin that runs an MCP (Model Context Protocol) server, enabling ex
 - **Status Bar Indicator**: Shows server status (stopped/running/error) with click-to-toggle functionality
 - **Configurable Settings**: Adjust server port, auto-start behavior, and log level
 - **CORS Support**: Enables access from remote machines via Tailscale or local network
-- **Five MCP Tools**:
+- **MCP Tools**:
     - `read_note` - Read the full content of a note by path
     - `search_notes` - Search notes by tag, folder, or text content
     - `get_linked_notes` - Get all notes linked from a specific note
-    - `list_incomplete_tasks` - Find incomplete tasks in a note or folder
     - `list_notes_by_tag` - Get all notes with specific tag(s)
+    - `read_note_with_embeds` - Read note with embedded content expanded
+    - `create_note` - Create notes from templates or with direct content
+    - `append_to_note` - Append content to an existing note
+    - `delete_note` - Delete a note (moves to system trash)
+    - `get_periodic_note_path` - Get path for periodic notes (daily/weekly/monthly/quarterly/yearly)
+    - `list_templates` - List available templates and templating plugins
 
 ## Installation
 
@@ -175,25 +180,6 @@ Get all notes linked from a specific note (outgoing links).
 }
 ```
 
-### list_incomplete_tasks
-
-Find all incomplete tasks (unchecked checkboxes) in a note or folder.
-
-**Parameters:**
-
-- `path` (string, required): Path to a note or folder
-
-**Example:**
-
-```json
-{
-  "name": "list_incomplete_tasks",
-  "arguments": {
-    "path": "Projects"
-  }
-}
-```
-
 ### list_notes_by_tag
 
 Get all notes that have specific tag(s).
@@ -212,6 +198,241 @@ Get all notes that have specific tag(s).
   }
 }
 ```
+
+### create_note
+
+Create a new note or binary file. Can create from a template or with direct content. Automatically creates parent folders if needed.
+
+**Parameters:**
+
+- `path` (string, required): Path for the new file (e.g., `"folder/note.md"` or `"assets/diagram.png"`). The `.md` extension is added automatically for text notes.
+- `content` (string, optional): The file content. For text notes, this is markdown. For binary files, this must be base64-encoded data. Not required if `template` is specified.
+- `template` (string, optional): Path to a template file (e.g., `"templates/daily.md"`). Requires Core Templates or Templater plugin. If specified, `content` is ignored.
+- `binary` (boolean, optional): Set to `true` for binary files (images, PDFs). Default: `false`.
+
+**Example (text note):**
+
+```json
+{
+  "name": "create_note",
+  "arguments": {
+    "path": "Projects/new-idea.md",
+    "content": "# New Idea\n\nThis is my new note content."
+  }
+}
+```
+
+**Example (binary file):**
+
+```json
+{
+  "name": "create_note",
+  "arguments": {
+    "path": "assets/diagram.png",
+    "content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    "binary": true
+  }
+}
+```
+
+**Example (from template):**
+
+```json
+{
+  "name": "create_note",
+  "arguments": {
+    "path": "Daily Notes/2025-01-19.md",
+    "template": "templates/daily.md"
+  }
+}
+```
+
+**Notes:**
+
+- Fails with an error if the file already exists
+- Parent folders are created automatically
+- Returns the created file's path
+- Binary files support: PNG, JPG, PDF, and other formats via base64 encoding
+- Template support requires Templater or Core Templates plugin
+- Templater provides full template processing (dates, prompts, dynamic content)
+- Core Templates processes basic date variables and template content
+
+### append_to_note
+
+Append content to an existing note. Can append to the end of the file or after a specific heading.
+
+**Parameters:**
+
+- `path` (string, required): Path to the note (e.g., `"folder/note.md"`)
+- `content` (string, required): The content to append
+- `heading` (string, optional): Heading to append after (e.g., `"## Tasks"`). If not specified, appends to end of file.
+- `separator` (string, optional): Separator between existing and new content. Default: `"\n"` (single newline)
+
+**Example (append to end of file):**
+
+```json
+{
+  "name": "append_to_note",
+  "arguments": {
+    "path": "Daily Notes/2025-01-18.md",
+    "content": "## Meeting Notes\n\n- Discussed project timeline"
+  }
+}
+```
+
+**Example (append after heading):**
+
+```json
+{
+  "name": "append_to_note",
+  "arguments": {
+    "path": "Projects/roadmap.md",
+    "content": "- [ ] Implement new feature",
+    "heading": "## Q1 Tasks"
+  }
+}
+```
+
+**Example with custom separator:**
+
+```json
+{
+  "name": "append_to_note",
+  "arguments": {
+    "path": "Projects/tasks.md",
+    "content": "- [ ] New task",
+    "separator": "\n\n"
+  }
+}
+```
+
+**Notes:**
+
+- Fails with an error if the note does not exist
+- Fails with an error if the specified heading is not found
+- Heading must match exactly (including `##` markers)
+- Content is appended at the end of the heading's section
+- Use `create_note` first if the note might not exist
+- Returns the note's path
+
+### delete_note
+
+Delete a note by moving it to the system trash. This is safer than permanent deletion as files can be recovered.
+
+**Parameters:**
+
+- `path` (string, required): Path to the note to delete (e.g., `"folder/note.md"`)
+
+**Example:**
+
+```json
+{
+  "name": "delete_note",
+  "arguments": {
+    "path": "Archive/old-note.md"
+  }
+}
+```
+
+**Notes:**
+
+- Fails with an error if the note does not exist
+- File is moved to system trash (not permanently deleted)
+- File can be recovered from trash if deleted by mistake
+- Returns the path of the deleted note
+
+### get_periodic_note_path
+
+Get the file path for a periodic note based on configured settings. Supports daily, weekly, monthly, quarterly, and yearly notes. Checks for the Periodic Notes plugin first, then falls back to the core Daily Notes plugin for daily notes.
+
+**Parameters:**
+
+- `period` (string, required): The period type - one of: `"daily"`, `"weekly"`, `"monthly"`, `"quarterly"`, `"yearly"`
+- `date` (string, optional): Date in ISO format (e.g., `"2025-01-18"`). Defaults to current date.
+
+**Example (daily note):**
+
+```json
+{
+  "name": "get_periodic_note_path",
+  "arguments": {
+    "period": "daily",
+    "date": "2025-01-18"
+  }
+}
+```
+
+**Example (weekly note for current week):**
+
+```json
+{
+  "name": "get_periodic_note_path",
+  "arguments": {
+    "period": "weekly"
+  }
+}
+```
+
+**Example (monthly note):**
+
+```json
+{
+  "name": "get_periodic_note_path",
+  "arguments": {
+    "period": "monthly",
+    "date": "2025-01-01"
+  }
+}
+```
+
+**Notes:**
+
+- For non-daily periods (weekly, monthly, quarterly, yearly), requires the Periodic Notes community plugin to be installed and configured
+- For daily notes, falls back to core Daily Notes plugin if Periodic Notes is not available
+- Returns path based on user's configured format and folder settings in their plugin
+- Fails if the required plugin is not installed or the period type is not enabled
+- Path format depends on user's settings (e.g., `"Daily Notes/2025-01-18.md"` or `"Weekly/2025-W03.md"`)
+- The note file itself may or may not exist yet - this tool only returns the configured path
+
+### list_templates
+
+List available note templates and which templating plugins are enabled. Useful for discovering what templates exist before creating notes.
+
+**Parameters:**
+
+None
+
+**Example:**
+
+```json
+{
+  "name": "list_templates",
+  "arguments": {}
+}
+```
+
+**Returns:**
+
+```json
+{
+  "templates_folder": "templates",
+  "templates": [
+    "templates/daily.md",
+    "templates/meeting.md",
+    "templates/project.md"
+  ],
+  "core_templates_enabled": true,
+  "templater_enabled": true
+}
+```
+
+**Notes:**
+
+- Returns the configured templates folder path
+- Lists all `.md` files in the templates folder (recursively)
+- Indicates which template plugins are enabled (Core Templates, Templater)
+- Templates folder location comes from plugin settings
+- If neither plugin is enabled, `templates` array will still list files in the default templates folder
 
 ## Development
 

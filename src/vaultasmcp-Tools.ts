@@ -1,12 +1,22 @@
-import type { App } from "obsidian";
-import { TFile } from "obsidian";
+// eslint-disable-next-line no-restricted-imports
+import type { Moment } from "moment";
+import { type App, moment, normalizePath, TFile, TFolder } from "obsidian";
+import {
+    getPeriodicNoteSettings,
+    type IGranularity,
+} from "obsidian-daily-notes-interface";
 import type { Logger, MCPTool } from "./@types/settings";
+import { TemplateHandler } from "./vaultasmcp-TemplateHandler";
 
 export class MCPTools {
+    private templateHandler: TemplateHandler;
+
     constructor(
         private app: App,
         private logger: Logger,
-    ) {}
+    ) {
+        this.templateHandler = new TemplateHandler(app);
+    }
 
     getToolDefinitions(): MCPTool[] {
         return [
@@ -130,6 +140,149 @@ export class MCPTools {
                     required: ["path"],
                 },
             },
+            {
+                name: "create_note",
+                description:
+                    "Create a new note or binary file. Can create from " +
+                    "template or with direct content. " +
+                    "Automatically creates parent folders if needed. " +
+                    "Fails if file already exists.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        path: {
+                            type: "string",
+                            description:
+                                "The path for the new file " +
+                                "(e.g., 'folder/note.md' or 'assets/image.png'). " +
+                                ".md extension added automatically for text notes.",
+                        },
+                        content: {
+                            type: "string",
+                            description:
+                                "The content for the file. " +
+                                "For text notes: markdown content. " +
+                                "For binary files: base64-encoded data. " +
+                                "Not required if template is specified.",
+                        },
+                        template: {
+                            type: "string",
+                            description:
+                                "Optional template path to use " +
+                                "(e.g., 'templates/daily.md'). " +
+                                "list_templates will show available templates. " +
+                                "Requires Core Templates or Templater plugin. " +
+                                "If specified, content parameter is ignored.",
+                        },
+                        binary: {
+                            type: "boolean",
+                            description:
+                                "Set to true for binary files (images, PDFs). " +
+                                "Content must be base64-encoded. Default: false.",
+                        },
+                    },
+                    required: ["path"],
+                },
+            },
+            {
+                name: "append_to_note",
+                description:
+                    "Append content to an existing note. " +
+                    "Can append to end of file or after a specific heading. " +
+                    "Fails if note does not exist.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        path: {
+                            type: "string",
+                            description:
+                                "The path to the note " +
+                                "(e.g., 'folder/note.md')",
+                        },
+                        content: {
+                            type: "string",
+                            description: "The content to append",
+                        },
+                        heading: {
+                            type: "string",
+                            description:
+                                "Optional heading to append after " +
+                                "(e.g., '## Tasks'). If not specified, appends " +
+                                "to end of file.",
+                        },
+                        separator: {
+                            type: "string",
+                            description:
+                                "Separator between existing content and new " +
+                                "content (default: '\\n')",
+                        },
+                    },
+                    required: ["path", "content"],
+                },
+            },
+            {
+                name: "delete_note",
+                description:
+                    "Delete a note by moving it to the system trash. " +
+                    "This is safer than permanent deletion as the file can " +
+                    "be recovered from trash. Fails if note does not exist.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        path: {
+                            type: "string",
+                            description:
+                                "The path to the note to delete " +
+                                "(e.g., 'folder/note.md')",
+                        },
+                    },
+                    required: ["path"],
+                },
+            },
+            {
+                name: "get_periodic_note_path",
+                description:
+                    "Get the file path for a periodic note " +
+                    "(daily, weekly, monthly, quarterly, yearly). " +
+                    "Checks for Periodic Notes plugin, falls back to " +
+                    "Daily Notes plugin for 'daily' period. " +
+                    "Returns path based on user's configured format and folder.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        period: {
+                            type: "string",
+                            enum: [
+                                "daily",
+                                "weekly",
+                                "monthly",
+                                "quarterly",
+                                "yearly",
+                            ],
+                            description: "The period type for the note",
+                        },
+                        date: {
+                            type: "string",
+                            description:
+                                "Optional date in ISO format " +
+                                "(e.g., '2025-01-18'). Defaults to current date.",
+                        },
+                    },
+                    required: ["period"],
+                },
+            },
+            {
+                name: "list_templates",
+                description:
+                    "List available note templates and which " +
+                    "templating plugins are enabled. " +
+                    "Returns templates folder path, list of templates, " +
+                    "and plugin availability (Core Templates, Templater).",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                },
+            },
         ];
     }
 
@@ -158,6 +311,29 @@ export class MCPTools {
                     args.excludePatterns as string[] | undefined,
                     args.includeLinks as boolean | undefined,
                 );
+            case "create_note":
+                return await this.createNote(
+                    args.path as string,
+                    args.content as string | undefined,
+                    args.template as string | undefined,
+                    args.binary as boolean | undefined,
+                );
+            case "append_to_note":
+                return await this.appendToNote(
+                    args.path as string,
+                    args.content as string,
+                    args.heading as string | undefined,
+                    args.separator as string | undefined,
+                );
+            case "delete_note":
+                return await this.deleteNote(args.path as string);
+            case "get_periodic_note_path":
+                return await this.getPeriodicNotePath(
+                    args.period as string,
+                    args.date as string | undefined,
+                );
+            case "list_templates":
+                return await this.templateHandler.listTemplates();
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
@@ -171,6 +347,229 @@ export class MCPTools {
 
         const content = await this.app.vault.cachedRead(file);
         return { content };
+    }
+
+    private async createNote(
+        path: string,
+        content?: string,
+        template?: string,
+        binary = false,
+    ): Promise<{ path: string }> {
+        // If template is provided, use template handler
+        if (template) {
+            const file = await this.templateHandler.createFromTemplate(
+                template,
+                path,
+            );
+            return { path: file.path };
+        }
+
+        // Otherwise, create from content
+        if (!content) {
+            throw new Error("Either content or template must be provided");
+        }
+
+        // Normalize path and add .md extension for text notes
+        let normalizedPath = normalizePath(path);
+        if (!binary && !normalizedPath.endsWith(".md")) {
+            normalizedPath = `${normalizedPath}.md`;
+        }
+
+        // Check if file already exists
+        const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
+        if (existing) {
+            throw new Error(`File already exists: ${normalizedPath}`);
+        }
+
+        // Create parent folders if needed (following Advanced URI pattern)
+        const parts = normalizedPath.split("/");
+        const dir = parts.slice(0, parts.length - 1).join("/");
+        if (
+            parts.length > 1 &&
+            !(this.app.vault.getAbstractFileByPath(dir) instanceof TFolder)
+        ) {
+            await this.app.vault.createFolder(dir);
+        }
+
+        // Create the file (binary or text)
+        let file: TFile;
+        if (binary) {
+            const arrayBuffer = this.base64ToArrayBuffer(content);
+            file = await this.app.vault.createBinary(
+                normalizedPath,
+                arrayBuffer,
+            );
+        } else {
+            file = await this.app.vault.create(normalizedPath, content);
+        }
+
+        return { path: file.path };
+    }
+
+    private async appendToNote(
+        path: string,
+        content: string,
+        heading?: string,
+        separator = "\n",
+    ): Promise<{ path: string }> {
+        const normalizedPath = normalizePath(path);
+        const file = this.app.vault.getAbstractFileByPath(normalizedPath);
+
+        if (!(file instanceof TFile)) {
+            throw new Error(`Note not found: ${normalizedPath}`);
+        }
+
+        // Read existing content
+        const existingContent = await this.app.vault.read(file);
+        const lines = existingContent.split("\n");
+
+        let newContent: string;
+
+        if (heading) {
+            // Heading-based insertion
+            const insertLine = this.findHeadingEnd(file, heading);
+            if (insertLine === undefined) {
+                throw new Error(`Heading not found: ${heading}`);
+            }
+
+            // Insert at the end of the heading section
+            lines[insertLine - 1] =
+                (lines[insertLine - 1] ?? "") + separator + content;
+            newContent = lines.join("\n");
+        } else {
+            // Append to end of file
+            newContent = existingContent + separator + content;
+        }
+
+        // Write back
+        await this.app.vault.modify(file, newContent);
+
+        return { path: file.path };
+    }
+
+    private async deleteNote(path: string): Promise<{ path: string }> {
+        const normalizedPath = normalizePath(path);
+        const file = this.app.vault.getAbstractFileByPath(normalizedPath);
+
+        if (!(file instanceof TFile)) {
+            throw new Error(`Note not found: ${normalizedPath}`);
+        }
+
+        // Move to system trash (recoverable)
+        await this.app.fileManager.trashFile(file);
+
+        return { path: normalizedPath };
+    }
+
+    private async getPeriodicNotePath(
+        period: string,
+        date?: string,
+    ): Promise<{ path: string }> {
+        // Map period names to granularity
+        const periodToGranularity: Record<string, IGranularity> = {
+            daily: "day",
+            weekly: "week",
+            monthly: "month",
+            quarterly: "quarter",
+            yearly: "year",
+        };
+
+        const granularity = periodToGranularity[period];
+        if (!granularity) {
+            throw new Error(`Invalid period type: ${period}`);
+        }
+
+        const targetDate = date ? moment(date) : moment();
+
+        // Use obsidian-daily-notes-interface for clean plugin access
+        const settings = getPeriodicNoteSettings(granularity);
+
+        return this.buildPeriodicPath(targetDate, settings);
+    }
+
+    private buildPeriodicPath(
+        date: Moment,
+        settings: { format?: string; folder?: string },
+    ): { path: string } {
+        const format = settings.format || "YYYY-MM-DD";
+        const folder = settings.folder || "";
+
+        let filename = date.format(format);
+        if (!filename.endsWith(".md")) {
+            filename += ".md";
+        }
+        return { path: normalizePath(this.join(folder, filename)) };
+    }
+
+    private join(...partSegments: string[]): string {
+        // Split the inputs into a list of path commands.
+        let parts: string[] = [];
+        for (let i = 0, l = partSegments.length; i < l; i++) {
+            parts = parts.concat(partSegments[i].split("/"));
+        }
+        // Interpret the path commands to get the new resolved path.
+        const newParts = [];
+        for (let i = 0, l = parts.length; i < l; i++) {
+            const part = parts[i];
+            // Remove leading and trailing slashes
+            // Also remove "." segments
+            if (!part || part === ".") continue;
+            // Push new path segments.
+            newParts.push(part);
+        }
+        // Preserve the initial slash if there was one.
+        if (parts[0] === "") newParts.unshift("");
+        // Turn back into a single string path.
+        return newParts.join("/");
+    }
+
+    private findHeadingEnd(file: TFile, heading: string): number | undefined {
+        const cache = this.app.metadataCache.getFileCache(file);
+        if (!cache || !cache.sections) return undefined;
+
+        const sections = cache.sections;
+        const foundHeading = cache.headings?.find((h) => h.heading === heading);
+
+        if (!foundHeading) return undefined;
+
+        // Find the section for this heading
+        const foundSectionIndex = sections.findIndex(
+            (section) =>
+                section.type === "heading" &&
+                section.position.start.line ===
+                    foundHeading.position.start.line,
+        );
+
+        if (foundSectionIndex === -1) {
+            return undefined;
+        }
+
+        const restSections = sections.slice(foundSectionIndex + 1);
+
+        // Find the next heading to determine section boundary
+        const nextHeadingIndex = restSections.findIndex(
+            (e) => e.type === "heading",
+        );
+
+        // Get the last section before the next heading (or end of file)
+        const lastSection =
+            restSections[
+                (nextHeadingIndex !== -1
+                    ? nextHeadingIndex
+                    : restSections.length) - 1
+            ] ?? sections[foundSectionIndex];
+
+        // Return 1-indexed line number
+        return lastSection.position.end.line + 1;
+    }
+
+    private base64ToArrayBuffer(base64: string): ArrayBuffer {
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
     }
 
     private async searchNotes(
