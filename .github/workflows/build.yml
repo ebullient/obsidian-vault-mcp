@@ -1,6 +1,7 @@
 name: CI Test
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
     paths:
@@ -36,4 +37,4 @@ jobs:
       run: |
         npm ci
         npm run build
-
+        # npm run test

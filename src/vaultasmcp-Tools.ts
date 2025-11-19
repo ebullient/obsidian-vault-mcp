@@ -878,7 +878,7 @@ export class MCPTools {
         // files and links.
         let embeddedLink = fileQueue.shift();
         while (embeddedLink) {
-            // Skip if file wasn't found (null) or the link depth has been reached
+            // Skip if file wasn't found (null) or max depth reached
             if (!embeddedLink.file || embeddedLink.depth >= MAX_DEPTH) {
                 embeddedLink = fileQueue.shift();
                 continue;
@@ -899,10 +899,11 @@ export class MCPTools {
                         continue;
                     }
 
-                    // Check if we've already seen this link (use raw link)
+                    // Skip duplicate unresolved links (resolved links are
+                    // deduplicated later by file path)
                     const linkKey = cachedLink.link;
                     if (seenLinks.has(linkKey)) {
-                        continue; // already processed
+                        continue; // unresolved link seen before
                     }
 
                     // Parse link to extract path and subpath
@@ -950,7 +951,7 @@ export class MCPTools {
                         );
                     }
 
-                    // add subpath or indicate there is a full/whole note reference
+                    // Track subpath or full file reference
                     if (!subpath) {
                         ref.hasFullReference = true;
                     } else {
