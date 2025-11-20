@@ -61,7 +61,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                 button
                     .setButtonText("Reset")
                     .setTooltip("Reset to current saved settings")
-                    .onClick(async () => {
+                    .onClick(() => {
                         this.reset();
                     }),
             )
@@ -157,11 +157,9 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
             .setName("Debug")
             .setDesc("Enable debug messages.")
             .addToggle((toggle) =>
-                toggle
-                    .setValue(this.newSettings.debug)
-                    .onChange(async (value) => {
-                        this.newSettings.debug = value;
-                    }),
+                toggle.setValue(this.newSettings.debug).onChange((value) => {
+                    this.newSettings.debug = value;
+                }),
             );
 
         // Server Status Display
