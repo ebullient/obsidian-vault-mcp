@@ -2,7 +2,7 @@ import cors from "@fastify/cors";
 import type { FastifyInstance } from "fastify";
 import Fastify from "fastify";
 import type { App } from "obsidian";
-import type { Logger, MCPRequest } from "./@types/settings";
+import type { Logger, MCPRequest, PathACL } from "./@types/settings";
 import { MCPHandler } from "./vaultasmcp-MCPHandler";
 
 export class MCPServer {
@@ -12,11 +12,17 @@ export class MCPServer {
     private logger: Logger;
     private bearerToken?: string;
 
-    constructor(app: App, port: number, logger: Logger, bearerToken?: string) {
+    constructor(
+        app: App,
+        port: number,
+        logger: Logger,
+        pathACL: PathACL,
+        bearerToken?: string,
+    ) {
         this.port = port;
         this.logger = logger;
         this.bearerToken = bearerToken;
-        this.mcpHandler = new MCPHandler(app, logger);
+        this.mcpHandler = new MCPHandler(app, logger, pathACL);
     }
 
     async start(): Promise<void> {

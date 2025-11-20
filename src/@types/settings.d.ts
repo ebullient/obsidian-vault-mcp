@@ -1,8 +1,15 @@
+export interface PathACL {
+    forbidden: string[];
+    readOnly: string[];
+    writable: string[];
+}
+
 export interface VaultAsMCPSettings {
     serverPort: number;
     autoStart: boolean;
     debug: boolean;
     bearerToken?: string;
+    pathACL: PathACL;
 }
 
 export type ServerStatus = "stopped" | "running" | "error";

@@ -1,5 +1,10 @@
 import type { App } from "obsidian";
-import type { Logger, MCPRequest, MCPResponse } from "./@types/settings";
+import type {
+    Logger,
+    MCPRequest,
+    MCPResponse,
+    PathACL,
+} from "./@types/settings";
 import {
     MCP_VERSION,
     SERVER_NAME,
@@ -11,9 +16,9 @@ export class MCPHandler {
     private tools: MCPTools;
     private logger: Logger;
 
-    constructor(app: App, logger: Logger) {
+    constructor(app: App, logger: Logger, pathACL: PathACL) {
         this.logger = logger;
-        this.tools = new MCPTools(app, logger);
+        this.tools = new MCPTools(app, logger, pathACL);
     }
 
     async handleRequest(request: MCPRequest): Promise<MCPResponse | null> {

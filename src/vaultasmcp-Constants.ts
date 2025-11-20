@@ -4,6 +4,11 @@ export const DEFAULT_SETTINGS: VaultAsMCPSettings = {
     serverPort: 8765,
     autoStart: true,
     debug: false,
+    pathACL: {
+        forbidden: [],
+        readOnly: [],
+        writable: [],
+    },
 };
 
 export const MCP_VERSION = "2024-11-05"; // Claude Desktop sends 2025-06-18, but our implementation is based on 2024-11-05

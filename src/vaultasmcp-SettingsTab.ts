@@ -236,7 +236,11 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
         const toolsList = containerEl.createEl("ul");
 
         // Fetch tool definitions dynamically from MCPTools
-        const mcpTools = new MCPTools(this.app, this.plugin);
+        const mcpTools = new MCPTools(
+            this.app,
+            this.plugin,
+            this.plugin.settings.pathACL,
+        );
         const tools = mcpTools.getToolDefinitions();
 
         for (const tool of tools) {

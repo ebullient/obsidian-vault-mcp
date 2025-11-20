@@ -15,7 +15,9 @@ import {
     getPeriodicNoteSettings,
     type IGranularity,
 } from "obsidian-daily-notes-interface";
-import type { Logger, MCPTool } from "./@types/settings";
+import type { Logger, MCPTool, PathACL } from "./@types/settings";
+import { NoteHandler } from "./vaultasmcp-NoteHandler";
+import { PathACLChecker } from "./vaultasmcp-PathACL";
 import { TemplateHandler } from "./vaultasmcp-TemplateHandler";
 
 const MAX_DEPTH = 2;
@@ -28,13 +30,22 @@ type EmbeddedLink = {
 type EmbeddedNotes = Map<string, EmbeddedLink>;
 
 export class MCPTools {
+    private noteHandler: NoteHandler;
     private templateHandler: TemplateHandler;
+    private aclChecker: PathACLChecker;
 
     constructor(
         private app: App,
         private logger: Logger,
+        pathACL: PathACL,
     ) {
         this.templateHandler = new TemplateHandler(app);
+        this.aclChecker = new PathACLChecker(pathACL);
+        this.noteHandler = new NoteHandler(
+            app,
+            this.templateHandler,
+            this.aclChecker,
+        );
     }
 
     getToolDefinitions(): MCPTool[] {
@@ -392,13 +403,7 @@ export class MCPTools {
     }
 
     private async readNote(path: string): Promise<{ content: string }> {
-        const file = this.app.vault.getAbstractFileByPath(path);
-        if (!(file instanceof TFile)) {
-            throw new Error(`Note not found: ${path}`);
-        }
-
-        const content = await this.app.vault.cachedRead(file);
-        return { content };
+        return await this.noteHandler.readNote(path);
     }
 
     private async createNote(
@@ -407,55 +412,12 @@ export class MCPTools {
         template?: string,
         binary = false,
     ): Promise<{ path: string }> {
-        // If template is provided, use template handler
-        if (template) {
-            const file = await this.templateHandler.createFromTemplate(
-                template,
-                path,
-            );
-            return { path: file.path };
-        }
-
-        // Otherwise, create from content
-        if (!content) {
-            throw new Error("Either content or template must be provided");
-        }
-
-        // Normalize path and add .md extension for text notes
-        let normalizedPath = normalizePath(path);
-        if (!binary && !normalizedPath.endsWith(".md")) {
-            normalizedPath = `${normalizedPath}.md`;
-        }
-
-        // Check if file already exists
-        const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
-        if (existing) {
-            throw new Error(`File already exists: ${normalizedPath}`);
-        }
-
-        // Create parent folders if needed (following Advanced URI pattern)
-        const parts = normalizedPath.split("/");
-        const dir = parts.slice(0, parts.length - 1).join("/");
-        if (
-            parts.length > 1 &&
-            !(this.app.vault.getAbstractFileByPath(dir) instanceof TFolder)
-        ) {
-            await this.app.vault.createFolder(dir);
-        }
-
-        // Create the file (binary or text)
-        let file: TFile;
-        if (binary) {
-            const arrayBuffer = this.base64ToArrayBuffer(content);
-            file = await this.app.vault.createBinary(
-                normalizedPath,
-                arrayBuffer,
-            );
-        } else {
-            file = await this.app.vault.create(normalizedPath, content);
-        }
-
-        return { path: file.path };
+        return await this.noteHandler.createNote(
+            path,
+            content,
+            template,
+            binary,
+        );
     }
 
     private async appendToNote(
@@ -464,65 +426,23 @@ export class MCPTools {
         heading?: string,
         separator = "\n",
     ): Promise<{ path: string }> {
-        const normalizedPath = normalizePath(path);
-        const file = this.app.vault.getAbstractFileByPath(normalizedPath);
-
-        if (!(file instanceof TFile)) {
-            throw new Error(`Note not found: ${normalizedPath}`);
-        }
-
-        // Read existing content
-        const existingContent = await this.app.vault.read(file);
-        if (heading) {
-            // Heading-based insertion
-            const insertOffset = this.findHeadingEndOffset(file, heading);
-            if (insertOffset === undefined) {
-                throw new Error(`Heading not found: ${heading}`);
-            }
-
-            const before = existingContent.slice(0, insertOffset);
-            const after = existingContent.slice(insertOffset);
-            const addition = `${separator}${content}`;
-            const newContent = `${before}${addition}${after}`;
-            await this.app.vault.modify(file, newContent);
-        } else {
-            // Append to end of file
-            const newContent = existingContent + separator + content;
-            await this.app.vault.modify(file, newContent);
-        }
-
-        return { path: file.path };
+        return await this.noteHandler.appendToNote(
+            path,
+            content,
+            heading,
+            separator,
+        );
     }
 
     private async updateNote(
         path: string,
         content: string,
     ): Promise<{ path: string }> {
-        const normalizedPath = normalizePath(path);
-        const file = this.app.vault.getAbstractFileByPath(normalizedPath);
-
-        if (!(file instanceof TFile)) {
-            throw new Error(`Note not found: ${normalizedPath}`);
-        }
-
-        // Replace entire content
-        await this.app.vault.modify(file, content);
-
-        return { path: file.path };
+        return await this.noteHandler.updateNote(path, content);
     }
 
     private async deleteNote(path: string): Promise<{ path: string }> {
-        const normalizedPath = normalizePath(path);
-        const file = this.app.vault.getAbstractFileByPath(normalizedPath);
-
-        if (!(file instanceof TFile)) {
-            throw new Error(`Note not found: ${normalizedPath}`);
-        }
-
-        // Move to system trash (recoverable)
-        await this.app.fileManager.trashFile(file);
-
-        return { path: normalizedPath };
+        return await this.noteHandler.deleteNote(path);
     }
 
     private getPeriodicNotePath(
@@ -626,58 +546,6 @@ export class MCPTools {
         return newParts.join("/");
     }
 
-    private findHeadingEndOffset(
-        file: TFile,
-        heading: string,
-    ): number | undefined {
-        const cache = this.app.metadataCache.getFileCache(file);
-        if (!cache?.sections || !cache.headings) return undefined;
-
-        const sections = cache.sections;
-        const foundHeading = cache.headings.find((h) => h.heading === heading);
-
-        if (!foundHeading) return undefined;
-
-        // Find the section for this heading
-        const foundSectionIndex = sections.findIndex(
-            (section) =>
-                section.type === "heading" &&
-                section.position.start.line ===
-                    foundHeading.position.start.line,
-        );
-
-        if (foundSectionIndex === -1) {
-            return undefined;
-        }
-
-        const restSections = sections.slice(foundSectionIndex + 1);
-
-        // Find the next heading to determine section boundary
-        const nextHeadingIndex = restSections.findIndex(
-            (section) => section.type === "heading",
-        );
-
-        const relevantSections =
-            nextHeadingIndex === -1
-                ? restSections
-                : restSections.slice(0, nextHeadingIndex);
-
-        const lastSection =
-            relevantSections[relevantSections.length - 1] ??
-            sections[foundSectionIndex];
-
-        return lastSection.position.end.offset;
-    }
-
-    private base64ToArrayBuffer(base64: string): ArrayBuffer {
-        const binaryString = atob(base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes.buffer;
-    }
-
     private async searchNotes(
         tag?: string,
         folder?: string,
@@ -714,12 +582,26 @@ export class MCPTools {
             files = matchingFiles;
         }
 
+        // Filter results through ACL (silently omit forbidden files)
+        const accessiblePaths = files
+            .map((f) => f.path)
+            .filter((path) => {
+                try {
+                    this.aclChecker.checkReadAccess(path);
+                    return true;
+                } catch {
+                    return false;
+                }
+            });
+
         return {
-            notes: files.map((f) => f.path).sort(),
+            notes: accessiblePaths.sort(),
         };
     }
 
     private getLinkedNotes(path: string): { links: string[] } {
+        this.aclChecker.checkReadAccess(path);
+
         const file = this.app.vault.getAbstractFileByPath(path);
         if (!(file instanceof TFile)) {
             throw new Error(`Note not found: ${path}`);
@@ -739,7 +621,12 @@ export class MCPTools {
                 path,
             );
             if (targetFile) {
-                links.add(targetFile.path);
+                try {
+                    this.aclChecker.checkReadAccess(targetFile.path);
+                    links.add(targetFile.path);
+                } catch {
+                    // Silently skip forbidden links
+                }
             }
         }
 
@@ -750,7 +637,12 @@ export class MCPTools {
                 path,
             );
             if (targetFile) {
-                links.add(targetFile.path);
+                try {
+                    this.aclChecker.checkReadAccess(targetFile.path);
+                    links.add(targetFile.path);
+                } catch {
+                    // Silently skip forbidden embeds
+                }
             }
         }
 
@@ -762,6 +654,12 @@ export class MCPTools {
         folders: string[];
     } {
         const normalizedPath = path ? normalizePath(path) : "";
+
+        // Check read access for the directory
+        if (normalizedPath) {
+            this.aclChecker.checkReadAccess(normalizedPath);
+        }
+
         const vault = this.app.vault;
 
         // Get the parent folder
@@ -778,10 +676,15 @@ export class MCPTools {
 
         // List immediate children only (non-recursive)
         for (const child of parentFolder.children) {
-            if (child instanceof TFile && child.extension === "md") {
-                notes.push(child.path);
-            } else if (child instanceof TFolder) {
-                folders.push(child.path);
+            try {
+                this.aclChecker.checkReadAccess(child.path);
+                if (child instanceof TFile && child.extension === "md") {
+                    notes.push(child.path);
+                } else if (child instanceof TFolder) {
+                    folders.push(child.path);
+                }
+            } catch {
+                // Silently skip forbidden children
             }
         }
 
@@ -807,8 +710,20 @@ export class MCPTools {
             return normalizedTags.some((tag) => allTags.includes(tag));
         });
 
+        // Filter results through ACL (silently omit forbidden files)
+        const accessiblePaths = matchingFiles
+            .map((f) => f.path)
+            .filter((path) => {
+                try {
+                    this.aclChecker.checkReadAccess(path);
+                    return true;
+                } catch {
+                    return false;
+                }
+            });
+
         return {
-            notes: matchingFiles.map((f) => f.path).sort(),
+            notes: accessiblePaths.sort(),
         };
     }
 
@@ -817,6 +732,8 @@ export class MCPTools {
         excludePatterns: string[] | undefined,
         includeLinks = false,
     ): Promise<{ content: string }> {
+        this.aclChecker.checkReadAccess(path);
+
         const file = this.app.vault.getAbstractFileByPath(path);
         if (!(file instanceof TFile)) {
             throw new Error(`Note not found: ${path}`);
@@ -947,6 +864,23 @@ export class MCPTools {
                                 `(from ${embeddedLink.file.path})`,
                         );
                         // Add to seen list to avoid checking again (but don't queue)
+                        seenLinks.set(linkKey, {
+                            hasFullReference: false,
+                            subpaths: new Set<string>(),
+                            file: null,
+                            depth: embeddedLink.depth + 1,
+                        });
+                        continue; // to next link
+                    }
+
+                    // Check ACL for target file
+                    try {
+                        this.aclChecker.checkReadAccess(targetFile.path);
+                    } catch {
+                        this.logger.debug(
+                            `Access denied to linked file: ${targetFile.path}`,
+                        );
+                        // Skip forbidden files silently
                         seenLinks.set(linkKey, {
                             hasFullReference: false,
                             subpaths: new Set<string>(),
