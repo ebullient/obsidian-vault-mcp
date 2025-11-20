@@ -98,14 +98,18 @@ export class MCPTools {
             {
                 name: "list_notes",
                 description:
-                    "List all notes in a directory path. Returns note paths.",
+                    "List notes and folders in a directory. " +
+                    "Returns immediate children only (non-recursive). " +
+                    "Use to explore vault structure incrementally.",
                 inputSchema: {
                     type: "object",
                     properties: {
                         path: {
                             type: "string",
                             description:
-                                "Directory path to list notes from (e.g., 'Daily Notes'). Use empty string for root.",
+                                "Directory path to list from " +
+                                "(e.g., 'Daily Notes'). " +
+                                "Use empty string for vault root.",
                         },
                     },
                     required: ["path"],
@@ -753,14 +757,37 @@ export class MCPTools {
         return { links: Array.from(links).sort() };
     }
 
-    private listNotes(path: string): { notes: string[] } {
-        const allFiles = this.app.vault.getMarkdownFiles();
-        const files = path
-            ? allFiles.filter((f) => f.path.startsWith(path))
-            : allFiles;
+    private listNotes(path: string): {
+        notes: string[];
+        folders: string[];
+    } {
+        const normalizedPath = path ? normalizePath(path) : "";
+        const vault = this.app.vault;
+
+        // Get the parent folder
+        const parentFolder = normalizedPath
+            ? vault.getAbstractFileByPath(normalizedPath)
+            : vault.getRoot();
+
+        if (!(parentFolder instanceof TFolder)) {
+            throw new Error(`Directory not found: ${normalizedPath || "root"}`);
+        }
+
+        const notes: string[] = [];
+        const folders: string[] = [];
+
+        // List immediate children only (non-recursive)
+        for (const child of parentFolder.children) {
+            if (child instanceof TFile && child.extension === "md") {
+                notes.push(child.path);
+            } else if (child instanceof TFolder) {
+                folders.push(child.path);
+            }
+        }
 
         return {
-            notes: files.map((f) => f.path).sort(),
+            notes: notes.sort(),
+            folders: folders.sort(),
         };
     }
 
