@@ -44,7 +44,7 @@ export class TemplateHandler {
     /**
      * Get information about available templates and enabled plugins
      */
-    async listTemplates(): Promise<TemplateInfo> {
+    listTemplates(): TemplateInfo {
         const templaterEnabled = this.isTemplaterEnabled();
         const coreTemplatesEnabled = this.isCoreTemplatesEnabled();
 
@@ -53,7 +53,7 @@ export class TemplateHandler {
             const templatesFolder = this.getTemplatesFolder();
 
             // List all .md files in templates folder
-            const templates = await this.getTemplateFiles(templatesFolder);
+            const templates = this.getTemplateFiles(templatesFolder);
             return {
                 templates_folder: templatesFolder,
                 templates,
@@ -148,7 +148,7 @@ export class TemplateHandler {
     /**
      * Get list of template files in folder
      */
-    private async getTemplateFiles(folderPath: string): Promise<string[]> {
+    private getTemplateFiles(folderPath: string): string[] {
         const normalizedPath = normalizePath(folderPath);
         const folder = this.app.vault.getAbstractFileByPath(normalizedPath);
 

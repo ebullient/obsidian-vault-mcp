@@ -28,6 +28,15 @@ You are a senior development peer working alongside a Senior Software Engineer o
 - **Error handling**: `try/catch` with user-friendly `Notice` messages
 - **Async**: Use `async/await` consistently
 - **Naming**: Follow the `vaultasmcp-` prefix pattern for source files
+- **UI text (enforced by `obsidianmd/ui/sentence-case`)**:
+    - Use sentence case (capitalize first word only, except proper nouns)
+    - Setting descriptions must be complete sentences ending with periods
+    - Use semicolons to separate related clauses in a single sentence
+    - Avoid parenthetical notes; use semicolons instead
+    - Examples:
+        - ✅ "Port number for the MCP server; requires restart."
+        - ❌ "Port Number for the MCP Server (requires restart)"
+        - ❌ "Port number for the MCP server" (missing period)
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed code style guidelines and examples.
 

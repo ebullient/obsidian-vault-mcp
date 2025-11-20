@@ -1,5 +1,3 @@
-// eslint-disable-next-line no-restricted-imports
-import type { Moment } from "moment";
 import {
     type App,
     getAllTags,
@@ -345,11 +343,11 @@ export class MCPTools {
                     args.text as string | undefined,
                 );
             case "get_linked_notes":
-                return await this.getLinkedNotes(args.path as string);
+                return this.getLinkedNotes(args.path as string);
             case "list_notes":
-                return await this.listNotes(args.path as string);
+                return this.listNotes(args.path as string);
             case "list_notes_by_tag":
-                return await this.listNotesByTag(args.tags as string[]);
+                return this.listNotesByTag(args.tags as string[]);
             case "read_note_with_embeds":
                 return await this.readNoteWithEmbeds(
                     args.path as string,
@@ -378,12 +376,12 @@ export class MCPTools {
             case "delete_note":
                 return await this.deleteNote(args.path as string);
             case "get_periodic_note_path":
-                return await this.getPeriodicNotePath(
+                return this.getPeriodicNotePath(
                     args.period as string,
                     args.date as string | undefined,
                 );
             case "list_templates":
-                return await this.templateHandler.listTemplates();
+                return this.templateHandler.listTemplates();
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
@@ -523,10 +521,10 @@ export class MCPTools {
         return { path: normalizedPath };
     }
 
-    private async getPeriodicNotePath(
+    private getPeriodicNotePath(
         period: string,
         date?: string,
-    ): Promise<{ path: string }> {
+    ): { path: string } {
         // Map period names to granularity
         const periodToGranularity: Record<string, IGranularity> = {
             daily: "day",
@@ -589,7 +587,7 @@ export class MCPTools {
     }
 
     private buildPeriodicPath(
-        date: Moment,
+        date: moment.Moment,
         settings: { format?: string; folder?: string },
     ): { path: string } {
         const format = settings.format || "YYYY-MM-DD";
@@ -717,7 +715,7 @@ export class MCPTools {
         };
     }
 
-    private async getLinkedNotes(path: string): Promise<{ links: string[] }> {
+    private getLinkedNotes(path: string): { links: string[] } {
         const file = this.app.vault.getAbstractFileByPath(path);
         if (!(file instanceof TFile)) {
             throw new Error(`Note not found: ${path}`);
@@ -755,7 +753,7 @@ export class MCPTools {
         return { links: Array.from(links).sort() };
     }
 
-    private async listNotes(path: string): Promise<{ notes: string[] }> {
+    private listNotes(path: string): { notes: string[] } {
         const allFiles = this.app.vault.getMarkdownFiles();
         const files = path
             ? allFiles.filter((f) => f.path.startsWith(path))
@@ -766,7 +764,7 @@ export class MCPTools {
         };
     }
 
-    private async listNotesByTag(tags: string[]): Promise<{ notes: string[] }> {
+    private listNotesByTag(tags: string[]): { notes: string[] } {
         const normalizedTags = tags.map((t) => this.normalizeTag(t));
         const files = this.app.vault.getMarkdownFiles();
 

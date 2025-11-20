@@ -2,6 +2,7 @@ export interface VaultAsMCPSettings {
     serverPort: number;
     autoStart: boolean;
     debug: boolean;
+    bearerToken?: string;
 }
 
 export type ServerStatus = "stopped" | "running" | "error";

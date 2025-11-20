@@ -54,14 +54,38 @@ The plugin provides three ways to control the server:
 Open Settings → Vault as MCP:
 
 - **Server Port**: Port number for the MCP server (default: 8765)
+- **Bearer Token**: Optional authentication token for secure access
 - **Auto-start Server**: Automatically start when Obsidian loads
 - **Debug**: Enable debug messages
+
+### Authentication
+
+Bearer token authentication is optional but recommended for security, especially when accessing your vault over a network.
+
+**To enable authentication:**
+
+1. Open Settings → Vault as MCP
+2. Click "Generate" to create a secure random token (or enter your own)
+3. Copy the token for use in client configuration
+4. Save settings and restart the server if it's running
+
+**To disable authentication:**
+
+1. Open Settings → Vault as MCP
+2. Click "Clear" to remove the token
+3. Save settings and restart the server if it's running
 
 ### Connecting from Open WebUI
 
 In Open WebUI's MCP configuration, add a new server: `http://localhost:8765/mcp`
 
 If Open WebUI is running on a remote machine (e.g., via Tailscale): `http://<your-machine-ip>:8765/mcp`
+
+**With authentication enabled**, add the bearer token to your MCP server configuration in Open WebUI using the `Authorization` header:
+
+```http
+Authorization: Bearer <your-token-here>
+```
 
 ### Connecting from Claude Desktop
 
@@ -95,6 +119,24 @@ Claude Desktop uses stdio transport for MCP servers, so you'll need the
          "args": ["/absolute/path/to/mcp-bridge.js"],
          "env": {
            "VAULT_MCP_URL": "http://localhost:8765/mcp"
+         }
+       }
+     }
+   }
+   ```
+
+   **With authentication enabled**, add the `VAULT_MCP_TOKEN` environment
+   variable:
+
+   ```json
+   {
+     "mcpServers": {
+       "obsidian-vault": {
+         "command": "node",
+         "args": ["/absolute/path/to/mcp-bridge.js"],
+         "env": {
+           "VAULT_MCP_URL": "http://localhost:8765/mcp",
+           "VAULT_MCP_TOKEN": "your-token-here"
          }
        }
      }

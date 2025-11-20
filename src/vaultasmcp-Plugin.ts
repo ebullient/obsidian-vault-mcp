@@ -107,6 +107,7 @@ export class VaultAsMCPPlugin extends Plugin implements Logger {
                 this.app,
                 this.settings.serverPort,
                 this,
+                this.settings.bearerToken,
             );
 
             await this.server.start();

@@ -27,6 +27,7 @@ declare const __VERSION__: string;
 
 // Config from environment
 const MCP_URL = process.env.VAULT_MCP_URL || "http://localhost:8765/mcp";
+const BEARER_TOKEN = process.env.VAULT_MCP_TOKEN;
 const TIMEOUT = 30000; // 30 seconds
 
 // Log to stderr only (stdout is for protocol messages)
@@ -52,12 +53,16 @@ async function forwardRequest(request: {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
 
-        // This bridge does not run in obsidian
+        // This bridge does not run in obsidian, using node fetch
+        // is the correct mechanism
         // eslint-disable-next-line no-restricted-globals
         const response = await fetch(MCP_URL, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                ...(BEARER_TOKEN && {
+                    Authorization: `Bearer ${BEARER_TOKEN}`,
+                }),
             },
             body: JSON.stringify(request),
             signal: controller.signal,

@@ -10,10 +10,12 @@ export class MCPServer {
     private mcpHandler: MCPHandler;
     private port: number;
     private logger: Logger;
+    private bearerToken?: string;
 
-    constructor(app: App, port: number, logger: Logger) {
+    constructor(app: App, port: number, logger: Logger, bearerToken?: string) {
         this.port = port;
         this.logger = logger;
+        this.bearerToken = bearerToken;
         this.mcpHandler = new MCPHandler(app, logger);
     }
 
@@ -31,6 +33,30 @@ export class MCPServer {
             origin: true,
             credentials: true,
         });
+
+        // Bearer token authentication (if configured)
+        if (this.bearerToken) {
+            this.server.addHook("preHandler", async (request, reply) => {
+                // Skip auth for health check
+                if (request.url === "/health") {
+                    return;
+                }
+
+                const auth = request.headers.authorization;
+                if (!auth || !auth.startsWith("Bearer ")) {
+                    this.logger.warn("Request missing bearer token");
+                    reply.code(401).send({ error: "Missing bearer token" });
+                    return;
+                }
+
+                const token = auth.substring(7);
+                if (token !== this.bearerToken) {
+                    this.logger.warn("Request with invalid bearer token");
+                    reply.code(401).send({ error: "Invalid bearer token" });
+                    return;
+                }
+            });
+        }
 
         // Health check endpoint
         this.server.get("/health", async () => {
@@ -104,5 +130,9 @@ export class MCPServer {
 
     updatePort(newPort: number): void {
         this.port = newPort;
+    }
+
+    updateBearerToken(newToken?: string): void {
+        this.bearerToken = newToken;
     }
 }
