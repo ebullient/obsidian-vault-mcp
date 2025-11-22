@@ -4,6 +4,12 @@ export interface PathACL {
     writable: string[];
 }
 
+export interface CurrentSettings {
+    pathACL(): PathACL;
+    bearerToken(): string | undefined;
+    serverPort(): number;
+}
+
 export interface VaultAsMCPSettings {
     serverPort: number;
     autoStart: boolean;

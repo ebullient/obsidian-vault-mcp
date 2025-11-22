@@ -27,8 +27,8 @@ export default defineConfig([
             "obsidianmd/ui/sentence-case": [
                 "warn",
                 {
-                    brands: ["Open WebUI"],
-                    acronyms: ["VMCP", "MCP", "URL"],
+                    brands: ["Open WebUI", "notes/**\ndrafts/**"],
+                    acronyms: ["VMCP", "MCP", "URL", "ACL"],
                     enforceCamelCaseLower: true,
                 },
             ],

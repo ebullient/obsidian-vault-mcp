@@ -2,27 +2,21 @@ import cors from "@fastify/cors";
 import type { FastifyInstance } from "fastify";
 import Fastify from "fastify";
 import type { App } from "obsidian";
-import type { Logger, MCPRequest, PathACL } from "./@types/settings";
+import type { CurrentSettings, Logger, MCPRequest } from "./@types/settings";
 import { MCPHandler } from "./vaultasmcp-MCPHandler";
 
 export class MCPServer {
     private server: FastifyInstance | null = null;
     private mcpHandler: MCPHandler;
-    private port: number;
-    private logger: Logger;
-    private bearerToken?: string;
+    port: number;
 
     constructor(
         app: App,
-        port: number,
-        logger: Logger,
-        pathACL: PathACL,
-        bearerToken?: string,
+        private logger: Logger,
+        private current: CurrentSettings,
     ) {
-        this.port = port;
-        this.logger = logger;
-        this.bearerToken = bearerToken;
-        this.mcpHandler = new MCPHandler(app, logger, pathACL);
+        this.mcpHandler = new MCPHandler(app, logger, current);
+        this.port = current.serverPort();
     }
 
     async start(): Promise<void> {
@@ -40,14 +34,14 @@ export class MCPServer {
             credentials: true,
         });
 
-        // Bearer token authentication (if configured)
-        if (this.bearerToken) {
-            this.server.addHook("preHandler", async (request, reply) => {
-                // Skip auth for health check
-                if (request.url === "/health") {
-                    return;
-                }
+        this.server.addHook("preHandler", async (request, reply) => {
+            // Skip auth for health check
+            if (request.url === "/health") {
+                return;
+            }
 
+            const bearerToken = this.current.bearerToken();
+            if (bearerToken) {
                 const auth = request.headers.authorization;
                 if (!auth || !auth.startsWith("Bearer ")) {
                     this.logger.warn("Request missing bearer token");
@@ -56,13 +50,13 @@ export class MCPServer {
                 }
 
                 const token = auth.substring(7);
-                if (token !== this.bearerToken) {
+                if (token !== bearerToken) {
                     this.logger.warn("Request with invalid bearer token");
                     reply.code(401).send({ error: "Invalid bearer token" });
                     return;
                 }
-            });
-        }
+            }
+        });
 
         // Health check endpoint
         this.server.get("/health", async () => {
@@ -71,7 +65,32 @@ export class MCPServer {
 
         // MCP protocol endpoint
         this.server.post("/mcp", async (request, reply) => {
-            const mcpRequest = request.body as MCPRequest;
+            const body = request.body;
+
+            // Validate request structure
+            if (
+                !body ||
+                typeof body !== "object" ||
+                !("jsonrpc" in body) ||
+                body.jsonrpc !== "2.0" ||
+                !("method" in body) ||
+                typeof body.method !== "string"
+            ) {
+                this.logger.warn("Invalid request structure:", body);
+                reply
+                    .code(400)
+                    .header("Content-Type", "application/json")
+                    .send({
+                        jsonrpc: "2.0",
+                        error: {
+                            code: -32600,
+                            message: "Invalid Request",
+                        },
+                    });
+                return;
+            }
+
+            const mcpRequest = body as MCPRequest;
             this.logger.debug(
                 "Received request:",
                 mcpRequest.method,
@@ -101,6 +120,8 @@ export class MCPServer {
                 .send(response);
         });
 
+        // get current port before listening
+        this.port = this.current.serverPort();
         try {
             await this.server.listen({
                 port: this.port,
@@ -132,13 +153,5 @@ export class MCPServer {
 
     getPort(): number {
         return this.port;
-    }
-
-    updatePort(newPort: number): void {
-        this.port = newPort;
-    }
-
-    updateBearerToken(newToken?: string): void {
-        this.bearerToken = newToken;
     }
 }

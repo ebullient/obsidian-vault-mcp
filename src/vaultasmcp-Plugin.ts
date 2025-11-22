@@ -1,7 +1,9 @@
 import { Notice, Plugin } from "obsidian";
 import type {
     ConnectionError,
+    CurrentSettings,
     Logger,
+    PathACL,
     ServerStatus,
     VaultAsMCPSettings,
 } from "./@types/settings";
@@ -9,7 +11,10 @@ import { DEFAULT_SETTINGS } from "./vaultasmcp-Constants";
 import { MCPServer } from "./vaultasmcp-Server";
 import { VaultAsMCPSettingsTab } from "./vaultasmcp-SettingsTab";
 
-export class VaultAsMCPPlugin extends Plugin implements Logger {
+export class VaultAsMCPPlugin
+    extends Plugin
+    implements Logger, CurrentSettings
+{
     settings!: VaultAsMCPSettings;
     private server: MCPServer | null = null;
     private statusBarItem: HTMLElement | null = null;
@@ -105,10 +110,8 @@ export class VaultAsMCPPlugin extends Plugin implements Logger {
         try {
             this.server = new MCPServer(
                 this.app,
-                this.settings.serverPort,
-                this,
-                this.settings.pathACL,
-                this.settings.bearerToken,
+                this, // as Logger
+                this, // as CurrentSettings
             );
 
             await this.server.start();
@@ -223,5 +226,17 @@ export class VaultAsMCPPlugin extends Plugin implements Logger {
         }
         console.error("(VMCP)", error, ...params);
         return String(error);
+    }
+
+    pathACL(): PathACL {
+        return this.settings.pathACL;
+    }
+
+    bearerToken(): string | undefined {
+        return this.settings.bearerToken;
+    }
+
+    serverPort(): number {
+        return this.settings.serverPort;
     }
 }

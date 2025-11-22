@@ -1,18 +1,9 @@
 import { type App, normalizePath, TFile, TFolder } from "obsidian";
+import type { Logger } from "./@types/settings";
+import type { PathACLChecker } from "./vaultasmcp-PathACL";
 
 declare module "obsidian" {
     interface App {
-        internalPlugins: {
-            getPluginById(id: "templates"): {
-                enabled: boolean;
-                instance?: {
-                    options?: {
-                        folder?: string;
-                    };
-                    insertTemplate(file: TFile): Promise<void>;
-                };
-            };
-        };
         plugins: {
             getPlugin(id: "templater-obsidian"): {
                 settings?: {
@@ -34,42 +25,39 @@ declare module "obsidian" {
 export interface TemplateInfo {
     templates_folder?: string;
     templates?: string[];
-    core_templates_enabled: boolean;
     templater_enabled: boolean;
 }
 
 export class TemplateHandler {
-    constructor(private app: App) {}
+    constructor(
+        private app: App,
+        private aclChecker?: PathACLChecker,
+        private logger?: Logger,
+    ) {}
 
     /**
-     * Get information about available templates and enabled plugins
+     * Get information about available templates and Templater plugin
      */
     listTemplates(): TemplateInfo {
         const templaterEnabled = this.isTemplaterEnabled();
-        const coreTemplatesEnabled = this.isCoreTemplatesEnabled();
 
-        if (templaterEnabled || coreTemplatesEnabled) {
-            // Get templates folder (prefer Templater, fall back to Core)
+        if (templaterEnabled) {
             const templatesFolder = this.getTemplatesFolder();
-
-            // List all .md files in templates folder
             const templates = this.getTemplateFiles(templatesFolder);
             return {
                 templates_folder: templatesFolder,
                 templates,
-                core_templates_enabled: coreTemplatesEnabled,
-                templater_enabled: templaterEnabled,
+                templater_enabled: true,
             };
         }
 
         return {
-            core_templates_enabled: false,
             templater_enabled: false,
         };
     }
 
     /**
-     * Create a note from a template
+     * Create a note from a template using Templater plugin
      */
     async createFromTemplate(
         templatePath: string,
@@ -84,36 +72,18 @@ export class TemplateHandler {
             throw new Error(`Template not found: ${normalizedTemplate}`);
         }
 
-        // Try Templater first (more powerful)
-        if (this.isTemplaterEnabled()) {
-            return await this.createWithTemplater(
-                templateFile,
-                targetPath,
-                targetFolder,
+        if (!this.isTemplaterEnabled()) {
+            throw new Error(
+                "Templater plugin is required for template support. " +
+                    "Please install and enable the Templater plugin.",
             );
         }
 
-        // Fall back to Core Templates (simpler)
-        if (this.isCoreTemplatesEnabled()) {
-            return await this.createWithCoreTemplates(
-                templateFile,
-                targetPath,
-                targetFolder,
-            );
-        }
-
-        throw new Error(
-            "No template plugin available. " +
-                "Enable Core Templates or Templater plugin.",
+        return await this.createWithTemplater(
+            templateFile,
+            targetPath,
+            targetFolder,
         );
-    }
-
-    /**
-     * Check if Core Templates plugin is enabled
-     */
-    private isCoreTemplatesEnabled(): boolean {
-        const plugin = this.app.internalPlugins.getPluginById("templates");
-        return plugin?.enabled ?? false;
     }
 
     /**
@@ -125,20 +95,12 @@ export class TemplateHandler {
     }
 
     /**
-     * Get templates folder path
+     * Get templates folder path from Templater settings
      */
     private getTemplatesFolder(): string {
-        // Try Templater settings first
         const templater = this.app.plugins.getPlugin("templater-obsidian");
         if (templater?.settings?.templates_folder) {
             return templater.settings.templates_folder;
-        }
-
-        // Fall back to Core Templates settings
-        const coreTemplates =
-            this.app.internalPlugins.getPluginById("templates");
-        if (coreTemplates?.instance?.options?.folder) {
-            return coreTemplates.instance.options.folder;
         }
 
         // Default fallback
@@ -160,7 +122,17 @@ export class TemplateHandler {
         const collectTemplates = (currentFolder: TFolder) => {
             for (const child of currentFolder.children) {
                 if (child instanceof TFile && child.extension === "md") {
-                    templates.push(child.path);
+                    // Filter by ACL if checker is available
+                    if (this.aclChecker) {
+                        try {
+                            this.aclChecker.checkReadAccess(child.path);
+                            templates.push(child.path);
+                        } catch {
+                            // Silently skip forbidden templates
+                        }
+                    } else {
+                        templates.push(child.path);
+                    }
                 } else if (child instanceof TFolder) {
                     collectTemplates(child);
                 }
@@ -216,66 +188,14 @@ export class TemplateHandler {
             );
 
         if (!createdFile) {
-            throw new Error("Failed to create note from template");
+            throw new Error(
+                `Failed to create note from template: ${templateFile.path}`,
+            );
         }
 
+        this.logger?.debug(
+            `Created note from template: ${templateFile.path} -> ${createdFile.path}`,
+        );
         return createdFile;
-    }
-
-    /**
-     * Create note using Core Templates plugin
-     */
-    private async createWithCoreTemplates(
-        templateFile: TFile,
-        targetPath: string,
-        targetFolder?: string,
-    ): Promise<TFile> {
-        const coreTemplates =
-            this.app.internalPlugins.getPluginById("templates");
-        if (!coreTemplates?.instance) {
-            throw new Error("Core Templates plugin not available");
-        }
-
-        // Build full path
-        let normalizedPath = normalizePath(targetPath);
-        if (targetFolder) {
-            normalizedPath = normalizePath(`${targetFolder}/${normalizedPath}`);
-        }
-
-        // Ensure .md extension
-        if (!normalizedPath.endsWith(".md")) {
-            normalizedPath = `${normalizedPath}.md`;
-        }
-
-        // Check if file already exists
-        const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
-        if (existing) {
-            throw new Error(`File already exists: ${normalizedPath}`);
-        }
-
-        // Create parent folders if needed
-        const parts = normalizedPath.split("/");
-        const dir = parts.slice(0, parts.length - 1).join("/");
-        if (
-            parts.length > 1 &&
-            !(this.app.vault.getAbstractFileByPath(dir) instanceof TFolder)
-        ) {
-            await this.app.vault.createFolder(dir);
-        }
-
-        // Create empty file
-        const file = await this.app.vault.create(normalizedPath, "");
-
-        // Open the file to make it active
-        const leaf = this.app.workspace.getLeaf(false);
-        if (!leaf) {
-            throw new Error("Could not get workspace leaf");
-        }
-        await leaf.openFile(file);
-
-        // Insert template using Core Templates API
-        await coreTemplates.instance.insertTemplate(templateFile);
-
-        return file;
     }
 }

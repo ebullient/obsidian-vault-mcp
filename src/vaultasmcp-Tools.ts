@@ -15,19 +15,10 @@ import {
     getPeriodicNoteSettings,
     type IGranularity,
 } from "obsidian-daily-notes-interface";
-import type { Logger, MCPTool, PathACL } from "./@types/settings";
+import type { CurrentSettings, Logger, MCPTool } from "./@types/settings";
 import { NoteHandler } from "./vaultasmcp-NoteHandler";
 import { PathACLChecker } from "./vaultasmcp-PathACL";
 import { TemplateHandler } from "./vaultasmcp-TemplateHandler";
-
-const MAX_DEPTH = 2;
-type EmbeddedLink = {
-    subpaths: Set<string>; // headings, blockrefs
-    hasFullReference: boolean;
-    file: TFile | null; // null for unresolved links
-    depth: number;
-};
-type EmbeddedNotes = Map<string, EmbeddedLink>;
 
 export class MCPTools {
     private noteHandler: NoteHandler;
@@ -36,15 +27,20 @@ export class MCPTools {
 
     constructor(
         private app: App,
-        private logger: Logger,
-        pathACL: PathACL,
+        logger: Logger,
+        current: CurrentSettings,
     ) {
-        this.templateHandler = new TemplateHandler(app);
-        this.aclChecker = new PathACLChecker(pathACL);
+        this.aclChecker = new PathACLChecker(current, logger);
+        this.templateHandler = new TemplateHandler(
+            app,
+            this.aclChecker,
+            logger,
+        );
         this.noteHandler = new NoteHandler(
             app,
             this.templateHandler,
             this.aclChecker,
+            logger,
         );
     }
 
@@ -197,7 +193,8 @@ export class MCPTools {
                                 "The content for the file. " +
                                 "For text notes: markdown content. " +
                                 "For binary files: base64-encoded data. " +
-                                "Not required if template is specified.",
+                                "If a template is also provided, this content is " +
+                                "appended after the template.",
                         },
                         template: {
                             type: "string",
@@ -205,8 +202,9 @@ export class MCPTools {
                                 "Optional template path to use " +
                                 "(e.g., 'templates/daily.md'). " +
                                 "list_templates will show available templates. " +
-                                "Requires Core Templates or Templater plugin. " +
-                                "If specified, content parameter is ignored.",
+                                "Requires Templater plugin to be installed. " +
+                                "If specified with content, template is applied " +
+                                "first, then content is appended.",
                         },
                         binary: {
                             type: "boolean",
@@ -332,10 +330,10 @@ export class MCPTools {
             {
                 name: "list_templates",
                 description:
-                    "List available note templates and which " +
-                    "templating plugins are enabled. " +
+                    "List available note templates and Templater " +
+                    "plugin status. " +
                     "Returns templates folder path, list of templates, " +
-                    "and plugin availability (Core Templates, Templater).",
+                    "and whether Templater plugin is enabled.",
                 inputSchema: {
                     type: "object",
                     properties: {},
@@ -364,7 +362,7 @@ export class MCPTools {
             case "list_notes_by_tag":
                 return this.listNotesByTag(args.tags as string[]);
             case "read_note_with_embeds":
-                return await this.readNoteWithEmbeds(
+                return await this.noteHandler.readNoteWithEmbeds(
                     args.path as string,
                     args.excludePatterns as string[] | undefined,
                     args.includeLinks as boolean | undefined,
@@ -546,17 +544,33 @@ export class MCPTools {
         return newParts.join("/");
     }
 
+    /**
+     * Filter files by ACL read access, silently excluding forbidden files
+     */
+    private filterAccessibleFiles(files: TFile[]): TFile[] {
+        return files.filter((f) => {
+            try {
+                this.aclChecker.checkReadAccess(f.path);
+                return true;
+            } catch {
+                return false;
+            }
+        });
+    }
+
     private async searchNotes(
         tag?: string,
         folder?: string,
         text?: string,
     ): Promise<{ notes: string[] }> {
-        let files = this.app.vault.getMarkdownFiles();
+        let files = this.filterAccessibleFiles(
+            this.app.vault.getMarkdownFiles(),
+        );
 
         if (folder) {
-            files = files.filter((f) => f.path.startsWith(folder));
+            const testFolder = normalizePath(folder);
+            files = files.filter((f) => f.path.startsWith(testFolder));
         }
-
         if (tag) {
             const normalizedTag = this.normalizeTag(tag);
             files = files.filter((f) => {
@@ -582,29 +596,18 @@ export class MCPTools {
             files = matchingFiles;
         }
 
-        // Filter results through ACL (silently omit forbidden files)
-        const accessiblePaths = files
-            .map((f) => f.path)
-            .filter((path) => {
-                try {
-                    this.aclChecker.checkReadAccess(path);
-                    return true;
-                } catch {
-                    return false;
-                }
-            });
-
         return {
-            notes: accessiblePaths.sort(),
+            notes: files.map((f) => f.path).sort(),
         };
     }
 
     private getLinkedNotes(path: string): { links: string[] } {
-        this.aclChecker.checkReadAccess(path);
+        const normalizedPath = path ? normalizePath(path) : "";
+        this.aclChecker.checkReadAccess(normalizedPath);
 
-        const file = this.app.vault.getAbstractFileByPath(path);
+        const file = this.app.vault.getAbstractFileByPath(normalizedPath);
         if (!(file instanceof TFile)) {
-            throw new Error(`Note not found: ${path}`);
+            throw new Error(`Note not found: ${normalizedPath}`);
         }
 
         const cache = this.app.metadataCache.getFileCache(file);
@@ -618,7 +621,7 @@ export class MCPTools {
         for (const link of cache.links || []) {
             const targetFile = this.app.metadataCache.getFirstLinkpathDest(
                 link.link,
-                path,
+                normalizedPath,
             );
             if (targetFile) {
                 try {
@@ -634,7 +637,7 @@ export class MCPTools {
         for (const embed of cache.embeds || []) {
             const targetFile = this.app.metadataCache.getFirstLinkpathDest(
                 embed.link,
-                path,
+                normalizedPath,
             );
             if (targetFile) {
                 try {
@@ -696,9 +699,11 @@ export class MCPTools {
 
     private listNotesByTag(tags: string[]): { notes: string[] } {
         const normalizedTags = tags.map((t) => this.normalizeTag(t));
-        const files = this.app.vault.getMarkdownFiles();
 
-        const matchingFiles = files.filter((f) => {
+        // Filter by ACL first, then process metadata
+        const matchingFiles = this.filterAccessibleFiles(
+            this.app.vault.getMarkdownFiles(),
+        ).filter((f) => {
             const cache = this.app.metadataCache.getFileCache(f);
             if (!cache) {
                 return false;
@@ -710,320 +715,12 @@ export class MCPTools {
             return normalizedTags.some((tag) => allTags.includes(tag));
         });
 
-        // Filter results through ACL (silently omit forbidden files)
-        const accessiblePaths = matchingFiles
-            .map((f) => f.path)
-            .filter((path) => {
-                try {
-                    this.aclChecker.checkReadAccess(path);
-                    return true;
-                } catch {
-                    return false;
-                }
-            });
-
         return {
-            notes: accessiblePaths.sort(),
+            notes: matchingFiles.map((f) => f.path).sort(),
         };
-    }
-
-    private async readNoteWithEmbeds(
-        path: string,
-        excludePatterns: string[] | undefined,
-        includeLinks = false,
-    ): Promise<{ content: string }> {
-        this.aclChecker.checkReadAccess(path);
-
-        const file = this.app.vault.getAbstractFileByPath(path);
-        if (!(file instanceof TFile)) {
-            throw new Error(`Note not found: ${path}`);
-        }
-
-        const content = await this.app.vault.cachedRead(file);
-        const compiledPatterns = this.compileExcludePatterns(
-            excludePatterns || [],
-        );
-        const expandedContent = await this.expandLinkedFiles(
-            file,
-            content,
-            compiledPatterns,
-            includeLinks,
-        );
-
-        return { content: expandedContent };
     }
 
     private normalizeTag(tag: string): string {
         return tag.startsWith("#") ? tag.substring(1) : tag;
-    }
-
-    private compileExcludePatterns(patterns: string[]): RegExp[] {
-        const compiled: RegExp[] = [];
-        for (const pattern of patterns) {
-            try {
-                compiled.push(new RegExp(pattern));
-            } catch (error) {
-                this.logger.warn(`Invalid exclude pattern: ${pattern}`, error);
-            }
-        }
-        return compiled;
-    }
-
-    private shouldExcludeLink(
-        linkCache: { link: string; displayText?: string },
-        excludePatterns: RegExp[],
-    ): boolean {
-        const textToCheck = `[${linkCache.displayText}](${linkCache.link})`;
-        return excludePatterns.some((pattern) => pattern.test(textToCheck));
-    }
-
-    private parseLinkReference(link: string): {
-        path: string;
-        subpath: string | null;
-    } {
-        const anchorPos = link.indexOf("#");
-        if (anchorPos < 0) {
-            return { path: link, subpath: null };
-        }
-        return {
-            path: link.substring(0, anchorPos),
-            subpath: link.substring(anchorPos + 1),
-        };
-    }
-
-    private async expandLinkedFiles(
-        sourceFile: TFile,
-        content: string,
-        excludePatterns: RegExp[] = [],
-        includeLinks = false,
-    ): Promise<string> {
-        let fileCache = this.app.metadataCache.getFileCache(sourceFile);
-        if (!fileCache) {
-            return content;
-        }
-
-        const seenLinks: EmbeddedNotes = new Map();
-        const fileQueue: EmbeddedLink[] = [];
-
-        // Track seen files to prevent duplicates (using normalized TFile paths)
-        const origin = {
-            hasFullReference: true,
-            subpaths: new Set<string>(),
-            file: sourceFile,
-            depth: 0,
-        };
-        seenLinks.set(sourceFile.path, origin);
-        fileQueue.push(origin);
-
-        // Phase 1: Process queue breadth-first
-        // We are not gathering content at this time: we're only resolving
-        // files and links.
-        let embeddedLink = fileQueue.shift();
-        while (embeddedLink) {
-            // Skip if file wasn't found (null) or max depth reached
-            if (!embeddedLink.file || embeddedLink.depth >= MAX_DEPTH) {
-                embeddedLink = fileQueue.shift();
-                continue;
-            }
-
-            fileCache = this.app.metadataCache.getFileCache(embeddedLink.file);
-            if (fileCache) {
-                // Process both links and embeds
-                // Only include regular links if includeLinks is true
-                const allLinks = [
-                    ...(includeLinks ? fileCache.links || [] : []),
-                    ...(fileCache.embeds || []),
-                ].filter((link) => link);
-
-                for (const cachedLink of allLinks) {
-                    // Skip if link matches exclusion patterns
-                    if (this.shouldExcludeLink(cachedLink, excludePatterns)) {
-                        continue;
-                    }
-
-                    // Skip duplicate unresolved links (resolved links are
-                    // deduplicated later by file path)
-                    const linkKey = cachedLink.link;
-                    if (seenLinks.has(linkKey)) {
-                        continue; // unresolved link seen before
-                    }
-
-                    // Parse link to extract path and subpath
-                    const { path, subpath } = this.parseLinkReference(
-                        cachedLink.link,
-                    );
-                    const targetFile =
-                        this.app.metadataCache.getFirstLinkpathDest(
-                            path,
-                            embeddedLink.file.path,
-                        );
-
-                    if (!targetFile) {
-                        this.logger.debug(
-                            `Link target not found: ${cachedLink.link} ` +
-                                `(from ${embeddedLink.file.path})`,
-                        );
-                        // Add to seen list to avoid checking again (but don't queue)
-                        seenLinks.set(linkKey, {
-                            hasFullReference: false,
-                            subpaths: new Set<string>(),
-                            file: null,
-                            depth: embeddedLink.depth + 1,
-                        });
-                        continue; // to next link
-                    }
-
-                    // Check ACL for target file
-                    try {
-                        this.aclChecker.checkReadAccess(targetFile.path);
-                    } catch {
-                        this.logger.debug(
-                            `Access denied to linked file: ${targetFile.path}`,
-                        );
-                        // Skip forbidden files silently
-                        seenLinks.set(linkKey, {
-                            hasFullReference: false,
-                            subpaths: new Set<string>(),
-                            file: null,
-                            depth: embeddedLink.depth + 1,
-                        });
-                        continue; // to next link
-                    }
-
-                    const key = targetFile.path;
-                    let ref = seenLinks.get(key);
-                    if (!ref) {
-                        // create ref if missing
-                        ref = {
-                            hasFullReference: false,
-                            subpaths: new Set<string>(),
-                            file: targetFile,
-                            depth: embeddedLink.depth + 1,
-                        };
-                        seenLinks.set(key, ref);
-                        fileQueue.push(ref); // new link to visit
-                        this.logger.debug(
-                            "Link",
-                            embeddedLink.file.path,
-                            " ➡ ",
-                            targetFile.path,
-                        );
-                    }
-
-                    // Track subpath or full file reference
-                    if (!subpath) {
-                        ref.hasFullReference = true;
-                    } else {
-                        ref.subpaths.add(subpath);
-                    }
-                }
-            }
-            embeddedLink = fileQueue.shift();
-        }
-
-        // Phase 2: Collect content.
-        // Read each referenced file, and append
-        const expandedContent = [];
-        seenLinks.delete(sourceFile.path); // remove sourcefile
-        this.logger.debug(
-            `Collecting content from ${seenLinks.size} linked files`,
-        );
-        for (const link of seenLinks.values()) {
-            // Skip null file entries (unresolved links)
-            // and non-markdown files
-            if (!link.file || link.file.extension !== "md") {
-                continue;
-            }
-
-            const fileContent = await this.app.vault.cachedRead(link.file);
-            if (link.hasFullReference) {
-                // emit whole file once
-                expandedContent.push(
-                    `===== BEGIN ENTRY: ${link.file.path} =====`,
-                );
-                expandedContent.push(fileContent);
-                expandedContent.push("===== END ENTRY =====\n");
-            } else {
-                // emit each subpath snippet
-                for (const subpath of link.subpaths) {
-                    expandedContent.push(
-                        `===== BEGIN ENTRY: ${link.file.path}#${subpath} =====`,
-                    );
-                    expandedContent.push(
-                        this.extractSubpathContent(
-                            link.file,
-                            fileContent,
-                            subpath,
-                        ),
-                    );
-                    expandedContent.push("===== END ENTRY =====\n");
-                }
-            }
-        }
-
-        if (expandedContent.length) {
-            return (
-                content +
-                "\n----- EMBEDDED/LINKED CONTENT -----\n" +
-                expandedContent.join("\n")
-            );
-        }
-        return content;
-    }
-
-    // Subset of full document content.
-    // If the subpath isn't found, return empty.
-    private extractSubpathContent(
-        file: TFile,
-        fileContent: string,
-        subpath: string,
-    ): string {
-        const cache = this.app.metadataCache.getFileCache(file);
-        if (!cache) {
-            return "";
-        }
-
-        // Check for block reference (^block-id)
-        if (subpath.startsWith("^")) {
-            const blockId = subpath.substring(1);
-            const block = cache.blocks?.[blockId];
-            if (block) {
-                // Extract the full block content using offsets
-                const start = block.position.start.offset;
-                const end = block.position.end.offset;
-                return fileContent.substring(start, end).trim();
-            }
-            this.logger.debug(
-                `Block reference not found: ^${blockId} in ${file.path}`,
-            );
-            return "";
-        }
-
-        // Check for heading reference
-        const targetHeading = subpath.replace(/%20/g, " ");
-        const heading = cache.headings?.find(
-            (h) => h.heading === targetHeading,
-        );
-
-        if (heading && cache.headings) {
-            // Find the end of this section
-            const start = heading.position.end.offset;
-            let end = fileContent.length;
-
-            // Find next heading at same or higher level
-            const headingIndex = cache.headings.indexOf(heading);
-            for (const h of cache.headings.slice(headingIndex + 1)) {
-                if (h.level <= heading.level) {
-                    end = h.position.start.offset;
-                    break;
-                }
-            }
-
-            return fileContent.substring(start, end).trim();
-        }
-
-        // If no matching subpath found, return empty
-        this.logger.debug(`Subpath not found: #${subpath} in ${file.path}`);
-        return "";
     }
 }

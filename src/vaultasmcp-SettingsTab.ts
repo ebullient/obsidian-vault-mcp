@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { type App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type { VaultAsMCPSettings } from "./@types/settings";
+import { PathACLTestModal } from "./vaultasmcp-PathACLTestModal";
 import type { VaultAsMCPPlugin } from "./vaultasmcp-Plugin";
 import { MCPTools } from "./vaultasmcp-Tools";
 
@@ -17,10 +18,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
     async save() {
         try {
             const needsRestart =
-                this.plugin.settings.serverPort !==
-                    this.newSettings.serverPort ||
-                this.plugin.settings.bearerToken !==
-                    this.newSettings.bearerToken;
+                this.plugin.settings.serverPort !== this.newSettings.serverPort;
 
             this.plugin.settings = this.newSettings;
             await this.plugin.saveSettings();
@@ -162,6 +160,79 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                 }),
             );
 
+        // Path Access Control (ACL)
+        new Setting(containerEl).setName("Path access control").setHeading();
+
+        new Setting(containerEl)
+            .setName("Forbidden paths")
+            .setDesc(
+                "Glob patterns for paths that cannot be read or written; one pattern per line.",
+            )
+            .addTextArea((text) => {
+                text.setPlaceholder("private/**\nsecrets.md")
+                    .setValue(this.newSettings.pathACL.forbidden.join("\n"))
+                    .onChange((value) => {
+                        this.newSettings.pathACL.forbidden = value
+                            .split("\n")
+                            .map((p) => p.trim())
+                            .filter((p) => p.length > 0);
+                    });
+                text.inputEl.rows = 4;
+                text.inputEl.cols = 50;
+            });
+
+        new Setting(containerEl)
+            .setName("Read-only paths")
+            .setDesc(
+                "Glob patterns for paths that can be read but not written; one pattern per line.",
+            )
+            .addTextArea((text) => {
+                text.setPlaceholder("archive/**\ntemplates/**")
+                    .setValue(this.newSettings.pathACL.readOnly.join("\n"))
+                    .onChange((value) => {
+                        this.newSettings.pathACL.readOnly = value
+                            .split("\n")
+                            .map((p) => p.trim())
+                            .filter((p) => p.length > 0);
+                    });
+                text.inputEl.rows = 4;
+                text.inputEl.cols = 50;
+            });
+
+        new Setting(containerEl)
+            .setName("Writable paths")
+            .setDesc(
+                "Glob patterns for paths that can be written; " +
+                    "leave empty to allow all except forbidden and read-only paths; " +
+                    "one pattern per line.",
+            )
+            .addTextArea((text) => {
+                text.setPlaceholder("notes/**\ndrafts/**")
+                    .setValue(this.newSettings.pathACL.writable.join("\n"))
+                    .onChange((value) => {
+                        this.newSettings.pathACL.writable = value
+                            .split("\n")
+                            .map((p) => p.trim())
+                            .filter((p) => p.length > 0);
+                    });
+                text.inputEl.rows = 4;
+                text.inputEl.cols = 50;
+            });
+
+        new Setting(containerEl)
+            .setName("Test ACL patterns")
+            .setDesc(
+                "Open a dialog to test your ACL patterns against sample vault paths.",
+            )
+            .addButton((button) =>
+                button.setButtonText("Test patterns").onClick(() => {
+                    new PathACLTestModal(
+                        this.app,
+                        this.newSettings.pathACL,
+                    ).open();
+                }),
+            );
+
         // Server Status Display
         new Setting(containerEl).setName("Server status").setHeading();
 
@@ -193,10 +264,11 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
             // Add connection info for Open WebUI
             if (status === "running") {
                 const infoDiv = statusContainer.createDiv();
-                infoDiv.createEl("p", {
+                const p = infoDiv.createEl("p");
+                p.createSpan({
                     text: "Connection URL for Open WebUI:",
                 });
-                const codeEl = infoDiv.createEl("code");
+                const codeEl = p.createEl("code");
                 codeEl.setText(
                     `http://localhost:${this.plugin.settings.serverPort}/mcp`,
                 );
@@ -236,11 +308,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
         const toolsList = containerEl.createEl("ul");
 
         // Fetch tool definitions dynamically from MCPTools
-        const mcpTools = new MCPTools(
-            this.app,
-            this.plugin,
-            this.plugin.settings.pathACL,
-        );
+        const mcpTools = new MCPTools(this.app, this.plugin, this.plugin);
         const tools = mcpTools.getToolDefinitions();
 
         for (const tool of tools) {

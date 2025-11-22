@@ -1,9 +1,9 @@
 import type { App } from "obsidian";
 import type {
+    CurrentSettings,
     Logger,
     MCPRequest,
     MCPResponse,
-    PathACL,
 } from "./@types/settings";
 import {
     MCP_VERSION,
@@ -16,9 +16,9 @@ export class MCPHandler {
     private tools: MCPTools;
     private logger: Logger;
 
-    constructor(app: App, logger: Logger, pathACL: PathACL) {
+    constructor(app: App, logger: Logger, current: CurrentSettings) {
         this.logger = logger;
-        this.tools = new MCPTools(app, logger, pathACL);
+        this.tools = new MCPTools(app, logger, current);
     }
 
     async handleRequest(request: MCPRequest): Promise<MCPResponse | null> {
@@ -85,9 +85,9 @@ export class MCPHandler {
     }
 
     private async handleToolsCall(request: MCPRequest): Promise<MCPResponse> {
-        const params = request.params || {};
+        const params = request.params ?? {};
         const toolName = params.name as string;
-        const args = (params.arguments as Record<string, unknown>) || {};
+        const args = (params.arguments as Record<string, unknown>) ?? {};
 
         this.logger.debug("Calling tool:", toolName, args);
 

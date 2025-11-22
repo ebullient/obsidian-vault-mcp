@@ -20,10 +20,12 @@
 
 /* Connection URL display */
 .vault-mcp-connection-url {
-  display: block;
+  display: inline-block;
   padding: 8px;
   margin-top: 4px;
-  background-color: var(--background-secondary);
+  margin-left: 4px;
+  background-color: var(--background-primary-alt);
+  border-radius: var(--button-radius);
 }
 
 /* Button container */
@@ -31,4 +33,77 @@
   margin-top: 16px;
   display: flex;
   gap: 8px;
+}
+
+/* PathACL Test Modal */
+.vault-mcp-acl-test-modal {
+  padding: 20px;
+  width: calc(var(--modal-width) - 80px);
+  height: calc(var(--modal-height) - 80px);
+  max-width: calc(var(--modal-max-width) - 80px);
+  max-height: calc(var(--modal-max-height) - 80px);
+}
+
+.acl-current-rules {
+  margin-bottom: 24px;
+  padding: 12px;
+  background-color: var(--background-secondary);
+  border-radius: 4px;
+}
+
+.acl-current-rules h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.acl-current-rules ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.acl-path-test {
+  margin-bottom: 24px;
+}
+
+.acl-test-results {
+  margin-top: 16px;
+}
+
+.acl-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+.acl-results-table th,
+.acl-results-table td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.acl-results-table th {
+  font-weight: 600;
+  background-color: var(--background-secondary);
+}
+
+.acl-center {
+  text-align: center;
+}
+
+.acl-success {
+  color: var(--text-success);
+}
+
+.acl-forbidden {
+  color: var(--text-error);
+}
+
+.acl-readonly {
+  color: var(--text-warning);
+}
+
+.acl-no-results {
+  color: var(--text-muted);
+  font-style: italic;
 }

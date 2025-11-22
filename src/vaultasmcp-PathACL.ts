@@ -1,10 +1,13 @@
-import type { PathACL } from "./@types/settings";
+import type { CurrentSettings, Logger } from "./@types/settings";
 
 /**
  * Path access control with glob pattern support
  */
 export class PathACLChecker {
-    constructor(private acl: PathACL) {}
+    constructor(
+        private current: CurrentSettings,
+        private logger: Logger,
+    ) {}
 
     /**
      * Check if a path can be read
@@ -12,7 +15,9 @@ export class PathACLChecker {
      * @returns true if path can be read
      */
     checkReadAccess(path: string): void {
-        if (this.matchesAny(path, this.acl.forbidden)) {
+        const acl = this.current.pathACL();
+        if (this.matchesAny(path, acl.forbidden)) {
+            this.logger.warn(`ACL denied read access: ${path}`);
             throw new Error(`Access forbidden: ${path}`);
         }
     }
@@ -23,22 +28,25 @@ export class PathACLChecker {
      * @returns true if path can be written
      */
     checkWriteAccess(path: string): void {
-        if (this.matchesAny(path, this.acl.forbidden)) {
+        const acl = this.current.pathACL();
+        if (this.matchesAny(path, acl.forbidden)) {
+            this.logger.warn(`ACL denied write access: ${path} (forbidden)`);
             throw new Error(`Access forbidden: ${path}`);
         }
 
         // If writable list is not empty, path must be in writable list
-        if (
-            this.acl.writable.length > 0 &&
-            !this.matchesAny(path, this.acl.writable)
-        ) {
+        if (acl.writable.length > 0 && !this.matchesAny(path, acl.writable)) {
+            this.logger.warn(
+                `ACL denied write access: ${path} (not in writable list)`,
+            );
             throw new Error(
                 `Write access denied: ${path} (not in writable list)`,
             );
         }
 
         // Check if explicitly read-only
-        if (this.matchesAny(path, this.acl.readOnly)) {
+        if (this.matchesAny(path, acl.readOnly)) {
+            this.logger.warn(`ACL denied write access: ${path} (read-only)`);
             throw new Error(`Write access denied: ${path} (read-only)`);
         }
     }
