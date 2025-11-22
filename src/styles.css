@@ -1,5 +1,13 @@
 /* Vault as MCP Plugin Styles */
 
+.vault-mcp-coffee {
+  text-align: center;
+  img {
+    margin: auto;
+    height: 30px;
+  }
+}
+
 /* Status bar */
 .vault-mcp-status {
   cursor: pointer;

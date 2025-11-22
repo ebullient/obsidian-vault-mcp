@@ -125,5 +125,6 @@ jobs:
             ${{ github.event.repository.name }}-${{ steps.build.outputs.version }}.zip \
             './build/main.js#main.js' \
             './build/mcp-bridge.js#mcp-bridge.js' \
+            './build/styles.css#styles.css' \
             './manifest.json' \
             './manifest-beta.json'

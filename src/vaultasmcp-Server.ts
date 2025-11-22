@@ -120,14 +120,15 @@ export class MCPServer {
                 .send(response);
         });
 
-        // get current port before listening
+        // get current port and host before listening
         this.port = this.current.serverPort();
+        const host = this.current.serverHost();
         try {
             await this.server.listen({
                 port: this.port,
-                host: "0.0.0.0",
+                host: host,
             });
-            this.logger.debug("Server started on port", this.port);
+            this.logger.debug("Server started on", `${host}:${this.port}`);
         } catch (error) {
             this.server = null;
             throw error;

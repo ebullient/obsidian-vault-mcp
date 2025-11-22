@@ -8,10 +8,12 @@ export interface CurrentSettings {
     pathACL(): PathACL;
     bearerToken(): string | undefined;
     serverPort(): number;
+    serverHost(): string;
 }
 
 export interface VaultAsMCPSettings {
     serverPort: number;
+    serverHost: string;
     autoStart: boolean;
     debug: boolean;
     bearerToken?: string;

@@ -239,4 +239,8 @@ export class VaultAsMCPPlugin
     serverPort(): number {
         return this.settings.serverPort;
     }
+
+    serverHost(): string {
+        return this.settings.serverHost;
+    }
 }

@@ -2,10 +2,11 @@ import type { VaultAsMCPSettings } from "./@types/settings";
 
 export const DEFAULT_SETTINGS: VaultAsMCPSettings = {
     serverPort: 8765,
+    serverHost: "127.0.0.1",
     autoStart: true,
     debug: false,
     pathACL: {
-        forbidden: [],
+        forbidden: [".obsidian/**"],
         readOnly: [],
         writable: [],
     },

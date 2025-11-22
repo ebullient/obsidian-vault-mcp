@@ -18,7 +18,9 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
     async save() {
         try {
             const needsRestart =
-                this.plugin.settings.serverPort !== this.newSettings.serverPort;
+                this.plugin.settings.serverPort !==
+                    this.newSettings.serverPort ||
+                this.plugin.settings.serverHost !== this.newSettings.serverHost;
 
             this.plugin.settings = this.newSettings;
             await this.plugin.saveSettings();
@@ -57,7 +59,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
             .setClass("vault-mcp-save-reset")
             .addButton((button) =>
                 button
-                    .setButtonText("Reset")
+                    .setIcon("rotate-ccw")
                     .setTooltip("Reset to current saved settings")
                     .onClick(() => {
                         this.reset();
@@ -65,7 +67,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
             )
             .addButton((button) =>
                 button
-                    .setButtonText("Save")
+                    .setIcon("save")
                     .setCta()
                     .setTooltip("Save all changes")
                     .onClick(async () => {
@@ -89,56 +91,6 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                     }),
             );
 
-        // Bearer Token
-        new Setting(containerEl)
-            .setName("Bearer token")
-            .setDesc(
-                "Optional authentication token; " +
-                    "leave empty to disable authentication.",
-            )
-            .addText((text) => {
-                text.setPlaceholder("Leave empty to disable")
-                    .setValue(this.newSettings.bearerToken || "")
-                    .onChange((value) => {
-                        this.newSettings.bearerToken =
-                            value.trim() || undefined;
-                    });
-                text.inputEl.type = this.showBearerToken ? "text" : "password";
-                return text;
-            })
-            .addButton((button) =>
-                button
-                    .setIcon(this.showBearerToken ? "eye-off" : "eye")
-                    .setTooltip(
-                        this.showBearerToken
-                            ? "Hide bearer token"
-                            : "Show bearer token",
-                    )
-                    .onClick(() => {
-                        this.showBearerToken = !this.showBearerToken;
-                        this.display();
-                    }),
-            )
-            .addButton((button) =>
-                button
-                    .setIcon("dice")
-                    .setTooltip("Generate a secure random token")
-                    .onClick(() => {
-                        const token = randomBytes(32).toString("base64url");
-                        this.newSettings.bearerToken = token;
-                        this.display();
-                    }),
-            )
-            .addButton((button) =>
-                button
-                    .setIcon("trash")
-                    .setTooltip("Remove authentication token")
-                    .onClick(() => {
-                        this.newSettings.bearerToken = undefined;
-                        this.display();
-                    }),
-            );
-
         // Auto-start
         new Setting(containerEl)
             .setName("Auto-start server")
@@ -151,15 +103,6 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                     }),
             );
 
-        new Setting(this.containerEl)
-            .setName("Debug")
-            .setDesc("Enable debug messages.")
-            .addToggle((toggle) =>
-                toggle.setValue(this.newSettings.debug).onChange((value) => {
-                    this.newSettings.debug = value;
-                }),
-            );
-
         // Path Access Control (ACL)
         new Setting(containerEl).setName("Path access control").setHeading();
 
@@ -169,7 +112,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                 "Glob patterns for paths that cannot be read or written; one pattern per line.",
             )
             .addTextArea((text) => {
-                text.setPlaceholder("private/**\nsecrets.md")
+                text.setPlaceholder(".obsidian/**\nprivate/**\nsecrets.md")
                     .setValue(this.newSettings.pathACL.forbidden.join("\n"))
                     .onChange((value) => {
                         this.newSettings.pathACL.forbidden = value
@@ -231,6 +174,99 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                         this.newSettings.pathACL,
                     ).open();
                 }),
+            );
+
+        // Advanced Settings
+        new Setting(containerEl).setName("Advanced").setHeading();
+
+        // Debug
+        new Setting(containerEl)
+            .setName("Debug")
+            .setDesc("Enable debug messages.")
+            .addToggle((toggle) =>
+                toggle.setValue(this.newSettings.debug).onChange((value) => {
+                    this.newSettings.debug = value;
+                }),
+            );
+
+        // Server Host
+        new Setting(containerEl)
+            .setName("Server host")
+            .setDesc(
+                "Network interface to bind the server to; " +
+                    "localhost (127.0.0.1) is recommended for security; " +
+                    "use 0.0.0.0 with a bearer token only if you need network access.",
+            )
+            .addDropdown((dropdown) =>
+                dropdown
+                    .addOption("127.0.0.1", "Localhost only (recommended)")
+                    .addOption("0.0.0.0", "All interfaces (network access)")
+                    .setValue(this.newSettings.serverHost)
+                    .onChange((value) => {
+                        // Warn if selecting network access without token
+                        if (
+                            value === "0.0.0.0" &&
+                            !this.newSettings.bearerToken
+                        ) {
+                            new Notice(
+                                "⚠️ Network access without authentication is unsafe. " +
+                                    "Generate a bearer token first.",
+                                5000,
+                            );
+                        }
+                        this.newSettings.serverHost = value;
+                    }),
+            );
+
+        // Bearer Token
+        new Setting(containerEl)
+            .setName("Bearer token")
+            .setDesc(
+                "Optional authentication token; " +
+                    "required when using network access; " +
+                    "leave empty to disable authentication.",
+            )
+            .addText((text) => {
+                text.setPlaceholder("Leave empty to disable")
+                    .setValue(this.newSettings.bearerToken || "")
+                    .onChange((value) => {
+                        this.newSettings.bearerToken =
+                            value.trim() || undefined;
+                    });
+                text.inputEl.type = this.showBearerToken ? "text" : "password";
+                return text;
+            })
+            .addButton((button) =>
+                button
+                    .setIcon(this.showBearerToken ? "eye-off" : "eye")
+                    .setTooltip(
+                        this.showBearerToken
+                            ? "Hide bearer token"
+                            : "Show bearer token",
+                    )
+                    .onClick(() => {
+                        this.showBearerToken = !this.showBearerToken;
+                        this.display();
+                    }),
+            )
+            .addButton((button) =>
+                button
+                    .setIcon("dice")
+                    .setTooltip("Generate a secure random token")
+                    .onClick(() => {
+                        const token = randomBytes(32).toString("base64url");
+                        this.newSettings.bearerToken = token;
+                        this.display();
+                    }),
+            )
+            .addButton((button) =>
+                button
+                    .setIcon("trash")
+                    .setTooltip("Remove authentication token")
+                    .onClick(() => {
+                        this.newSettings.bearerToken = undefined;
+                        this.display();
+                    }),
             );
 
         // Server Status Display
@@ -316,6 +352,15 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
             li.createEl("strong", { text: tool.name });
             li.appendText(`: ${tool.description}`);
         }
+
+        const div = this.containerEl.createDiv("vault-mcp-coffee");
+        div.createEl("a", {
+            href: "https://www.buymeacoffee.com/ebullient",
+        }).createEl("img", {
+            attr: {
+                src: "https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=☕&slug=ebullient&button_colour=8e6787&font_colour=ebebeb&font_family=Inter&outline_colour=392a37&coffee_colour=ecc986",
+            },
+        });
     }
 
     /** Save on exit */
