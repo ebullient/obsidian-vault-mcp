@@ -33,7 +33,7 @@
     "@typescript-eslint/parser": "^8.46.4",
     "auto-changelog": "^2.5.0",
     "builtin-modules": "^5.0.0",
-    "esbuild": "^0.25.9",
+    "esbuild": "^0.25.12",
     "eslint": "^9.39.1",
     "eslint-plugin-obsidianmd": "^0.1.9",
     "moment": "^2.30.1",
