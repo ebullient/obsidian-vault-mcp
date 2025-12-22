@@ -30,7 +30,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.3.4",
     "@types/node": "^24.10.0",
-    "@typescript-eslint/parser": "^8.46.4",
+    "@typescript-eslint/parser": "^8.47.0",
     "auto-changelog": "^2.5.0",
     "builtin-modules": "^5.0.0",
     "esbuild": "^0.25.12",
