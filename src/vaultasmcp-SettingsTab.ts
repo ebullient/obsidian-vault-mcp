@@ -13,6 +13,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
     constructor(app: App, plugin: VaultAsMCPPlugin) {
         super(app, plugin);
         this.plugin = plugin;
+        this.icon = "brain-circuit";
     }
 
     async save() {
