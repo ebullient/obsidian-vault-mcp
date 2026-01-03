@@ -36,6 +36,15 @@ An Obsidian plugin that runs an MCP (Model Context Protocol) server, enabling ex
 3. Reload Obsidian
 4. Enable "Vault as MCP" in Settings → Community Plugins
 
+### Install with BRAT
+
+Assuming you have the BRAT plugin installed and enabled:
+
+1. Open BRAT plugin settings
+2. Click 'Add beta plugin'
+3. Use `https://github.com/ebullient/obsidian-vault-mcp` as the URL, select the latest version and install
+4. Enable "Vault as MCP", either as part of installing via BRAT, or in Settings → Community Plugins
+
 ## Usage
 
 ### Starting the Server
