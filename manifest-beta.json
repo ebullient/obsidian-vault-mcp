@@ -6,5 +6,6 @@
 	"description": "MCP server connecting Open WebUI, Claude Desktop, and other LLMs to your vault.",
 	"author": "ebullient",
 	"authorUrl": "https://github.com/ebullient",
+  "fundingUrl": "https://buymeacoffee.com/ebullient",
 	"isDesktopOnly": true
 }
