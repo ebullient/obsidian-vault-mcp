@@ -296,6 +296,18 @@ export class MCPTools {
                 },
             },
             {
+                name: "get_current_date",
+                description:
+                    "Get the current date and time information. " +
+                    "Returns the current date in ISO format, timestamp, " +
+                    "and formatted date string. Use this to determine " +
+                    "what date to use for periodic notes or date-based operations.",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                },
+            },
+            {
                 name: "get_periodic_note_path",
                 description:
                     "Get the file path for a periodic note " +
@@ -388,6 +400,8 @@ export class MCPTools {
                 );
             case "delete_note":
                 return await this.deleteNote(args.path as string);
+            case "get_current_date":
+                return this.getCurrentDate();
             case "get_periodic_note_path":
                 return this.getPeriodicNotePath(
                     args.period as string,
@@ -441,6 +455,27 @@ export class MCPTools {
 
     private async deleteNote(path: string): Promise<{ path: string }> {
         return await this.noteHandler.deleteNote(path);
+    }
+
+    private getCurrentDate(): {
+        iso: string;
+        formatted: string;
+        timestamp: number;
+        year: number;
+        month: number;
+        day: number;
+        dayOfWeek: string;
+    } {
+        const now = moment();
+        return {
+            iso: now.format("YYYY-MM-DD"),
+            formatted: now.format("MMMM D, YYYY"),
+            timestamp: now.valueOf(),
+            year: now.year(),
+            month: now.month() + 1, // moment months are 0-indexed
+            day: now.date(),
+            dayOfWeek: now.format("dddd"),
+        };
     }
 
     private getPeriodicNotePath(
