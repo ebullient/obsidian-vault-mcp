@@ -65,7 +65,9 @@ export class MCPTools {
             {
                 name: "search_notes",
                 description:
-                    "Search for notes by tag, folder path, or text content. Returns matching note paths.",
+                    "Search for notes by tag, folder path, text content or file mtime. " +
+                    "Multiple parameters narrow results (AND logic). " +
+                    "Returns matching note paths.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -82,6 +84,27 @@ export class MCPTools {
                         text: {
                             type: "string",
                             description: "Text to search for in note content",
+                        },
+                        mtime: {
+                            type: "object",
+                            description:
+                                "Filter by modification time. " +
+                                "Use 'before' and/or 'after' with ISO dates " +
+                                "(e.g., '2025-01-01').",
+                            properties: {
+                                before: {
+                                    type: "string",
+                                    description:
+                                        "Include notes modified on or before " +
+                                        "this date (inclusive; ISO format).",
+                                },
+                                after: {
+                                    type: "string",
+                                    description:
+                                        "Include notes modified on or after " +
+                                        "this date (inclusive; ISO format).",
+                                },
+                            },
                         },
                     },
                 },
@@ -296,6 +319,18 @@ export class MCPTools {
                 },
             },
             {
+                name: "get_current_date",
+                description:
+                    "Get the current date and time information. " +
+                    "Returns the current date in ISO format, timestamp, " +
+                    "and formatted date string. Use this to determine " +
+                    "what date to use for periodic notes or date-based operations.",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                },
+            },
+            {
                 name: "get_periodic_note_path",
                 description:
                     "Get the file path for a periodic note " +
@@ -354,6 +389,9 @@ export class MCPTools {
                     args.tag as string | undefined,
                     args.folder as string | undefined,
                     args.text as string | undefined,
+                    args.mtime as
+                        | { before?: string; after?: string }
+                        | undefined,
                 );
             case "get_linked_notes":
                 return this.getLinkedNotes(args.path as string);
@@ -388,6 +426,8 @@ export class MCPTools {
                 );
             case "delete_note":
                 return await this.deleteNote(args.path as string);
+            case "get_current_date":
+                return this.getCurrentDate();
             case "get_periodic_note_path":
                 return this.getPeriodicNotePath(
                     args.period as string,
@@ -441,6 +481,27 @@ export class MCPTools {
 
     private async deleteNote(path: string): Promise<{ path: string }> {
         return await this.noteHandler.deleteNote(path);
+    }
+
+    private getCurrentDate(): {
+        iso: string;
+        formatted: string;
+        timestamp: number;
+        year: number;
+        month: number;
+        day: number;
+        dayOfWeek: string;
+    } {
+        const now = moment();
+        return {
+            iso: now.format("YYYY-MM-DD"),
+            formatted: now.format("MMMM D, YYYY"),
+            timestamp: now.valueOf(),
+            year: now.year(),
+            month: now.month() + 1, // moment months are 0-indexed
+            day: now.date(),
+            dayOfWeek: now.format("dddd"),
+        };
     }
 
     private getPeriodicNotePath(
@@ -562,6 +623,7 @@ export class MCPTools {
         tag?: string,
         folder?: string,
         text?: string,
+        mtime?: { before?: string; after?: string },
     ): Promise<{ notes: string[] }> {
         let files = this.filterAccessibleFiles(
             this.app.vault.getMarkdownFiles(),
@@ -584,7 +646,6 @@ export class MCPTools {
                 );
             });
         }
-
         if (text) {
             const matchingFiles: TFile[] = [];
             for (const file of files) {
@@ -594,6 +655,24 @@ export class MCPTools {
                 }
             }
             files = matchingFiles;
+        }
+        if (mtime) {
+            const beforeMs = mtime.before
+                ? moment(mtime.before).endOf("day").valueOf()
+                : undefined;
+            const afterMs = mtime.after
+                ? moment(mtime.after).startOf("day").valueOf()
+                : undefined;
+            files = files.filter((f) => {
+                const fileMtime = f.stat.mtime;
+                if (beforeMs !== undefined && fileMtime >= beforeMs) {
+                    return false;
+                }
+                if (afterMs !== undefined && fileMtime <= afterMs) {
+                    return false;
+                }
+                return true;
+            });
         }
 
         return {
