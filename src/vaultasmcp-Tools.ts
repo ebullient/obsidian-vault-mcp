@@ -65,7 +65,7 @@ export class MCPTools {
             {
                 name: "search_notes",
                 description:
-                    "Search for notes by tag, folder path, text content or file mtime. " +
+                    "Search for notes by folder path, tag, frontmatter attribute, file mtime, or text content. " +
                     "Multiple parameters narrow results (AND logic). " +
                     "Returns matching note paths.",
                 inputSchema: {
@@ -104,6 +104,17 @@ export class MCPTools {
                                         "Include notes modified on or after " +
                                         "this date (inclusive; ISO format).",
                                 },
+                            },
+                        },
+                        frontmatter: {
+                            type: "object",
+                            description:
+                                "Filter by frontmatter properties. " +
+                                "Keys are property names, values are strings " +
+                                "to match (case-insensitive). " +
+                                'Example: {"sphere": "work", "status": "active"}',
+                            additionalProperties: {
+                                type: "string",
                             },
                         },
                     },
@@ -392,6 +403,7 @@ export class MCPTools {
                     args.mtime as
                         | { before?: string; after?: string }
                         | undefined,
+                    args.frontmatter as Record<string, string> | undefined,
                 );
             case "get_linked_notes":
                 return this.getLinkedNotes(args.path as string);
@@ -624,6 +636,7 @@ export class MCPTools {
         folder?: string,
         text?: string,
         mtime?: { before?: string; after?: string },
+        frontmatter?: Record<string, string>,
     ): Promise<{ notes: string[] }> {
         let files = this.filterAccessibleFiles(
             this.app.vault.getMarkdownFiles(),
@@ -646,6 +659,48 @@ export class MCPTools {
                 );
             });
         }
+        if (frontmatter && Object.keys(frontmatter).length > 0) {
+            files = files.filter((f) => {
+                const cache = this.app.metadataCache.getFileCache(f);
+                const fm = cache?.frontmatter;
+                if (!fm) {
+                    return false;
+                }
+                return Object.entries(frontmatter).every(([key, value]) => {
+                    const fmValue = fm[key];
+                    if (fmValue === undefined || fmValue === null) {
+                        return false;
+                    }
+                    return (
+                        String(fmValue).toLowerCase() === value.toLowerCase()
+                    );
+                });
+            });
+        }
+        if (mtime) {
+            const before = mtime.before
+                ? moment(mtime.before).endOf("day")
+                : undefined;
+            const after = mtime.after
+                ? moment(mtime.after).startOf("day")
+                : undefined;
+            files = files.filter((f) => {
+                const cache = this.app.metadataCache.getFileCache(f);
+                const lastModified = cache?.frontmatter?.last_modified;
+                let date = moment(f.stat.mtime);
+                if (lastModified) {
+                    // Use frontmatter date (YYYY-MM-DD comparison)
+                    date = moment(String(lastModified));
+                }
+                if (before && date.isAfter(before, "day")) {
+                    return false;
+                }
+                if (after && date.isBefore(after, "day")) {
+                    return false;
+                }
+                return true;
+            });
+        }
         if (text) {
             const matchingFiles: TFile[] = [];
             for (const file of files) {
@@ -655,24 +710,6 @@ export class MCPTools {
                 }
             }
             files = matchingFiles;
-        }
-        if (mtime) {
-            const beforeMs = mtime.before
-                ? moment(mtime.before).endOf("day").valueOf()
-                : undefined;
-            const afterMs = mtime.after
-                ? moment(mtime.after).startOf("day").valueOf()
-                : undefined;
-            files = files.filter((f) => {
-                const fileMtime = f.stat.mtime;
-                if (beforeMs !== undefined && fileMtime >= beforeMs) {
-                    return false;
-                }
-                if (afterMs !== undefined && fileMtime <= afterMs) {
-                    return false;
-                }
-                return true;
-            });
         }
 
         return {
