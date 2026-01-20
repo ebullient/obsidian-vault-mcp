@@ -243,4 +243,8 @@ export class VaultAsMCPPlugin
     serverHost(): string {
         return this.settings.serverHost;
     }
+
+    serverVersion(): string {
+        return this.manifest.version;
+    }
 }

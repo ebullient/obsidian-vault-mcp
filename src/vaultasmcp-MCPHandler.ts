@@ -5,20 +5,18 @@ import type {
     MCPRequest,
     MCPResponse,
 } from "./@types/settings";
-import {
-    MCP_VERSION,
-    SERVER_NAME,
-    SERVER_VERSION,
-} from "./vaultasmcp-Constants";
+import { MCP_VERSION, SERVER_NAME } from "./vaultasmcp-Constants";
 import { MCPTools } from "./vaultasmcp-Tools";
 
 export class MCPHandler {
     private tools: MCPTools;
     private logger: Logger;
+    private version: string;
 
     constructor(app: App, logger: Logger, current: CurrentSettings) {
         this.logger = logger;
         this.tools = new MCPTools(app, logger, current);
+        this.version = current.serverVersion();
     }
 
     async handleRequest(request: MCPRequest): Promise<MCPResponse | null> {
@@ -69,7 +67,7 @@ export class MCPHandler {
             protocolVersion: MCP_VERSION,
             serverInfo: {
                 name: SERVER_NAME,
-                version: SERVER_VERSION,
+                version: this.version,
             },
             capabilities: {
                 tools: {},
@@ -109,16 +107,24 @@ export class MCPHandler {
                         text: JSON.stringify(result, null, 2),
                     },
                 ],
+                structuredContent: result,
+                isError: false,
             });
         } catch (error) {
             this.logger.error(error, `Tool ${toolName} failed`, args);
             const message =
                 error instanceof Error ? error.message : String(error);
-            return this.createError(
-                request.id,
-                -32000,
-                `Tool execution failed: ${message}`,
-            );
+            // Return tool execution error in content, not as JSON-RPC error
+            // This allows the LLM to see and handle the error
+            return this.createResponse(request.id, {
+                content: [
+                    {
+                        type: "text",
+                        text: `Tool execution failed: ${message}`,
+                    },
+                ],
+                isError: true,
+            });
         }
     }
 

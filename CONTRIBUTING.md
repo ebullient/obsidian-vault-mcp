@@ -61,7 +61,7 @@ to this file for testing:
 ```json
 {
   "mcpServers": {
-    "obsidian-vault-dev": {
+    "obsidian-vault": {
       "command": "node",
       "args": ["/absolute/path/to/obsidian-vault-mcp/build/mcp-bridge.js"],
       "env": {
@@ -135,7 +135,7 @@ via the bridge, or Open WebUI) to interact with your vault.
 
 ### MCP Protocol Implementation
 
-The plugin implements MCP 2024-11-05 protocol with these capabilities:
+The plugin implements MCP 2025-06-18 protocol with these capabilities:
 
 - **initialize**: Handshake and capability negotiation
 - **tools/list**: Expose available vault interaction tools

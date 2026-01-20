@@ -45,6 +45,53 @@ export class MCPTools {
     }
 
     getToolDefinitions(): MCPTool[] {
+        // Common output schemas
+        const contentSchema = {
+            type: "object" as const,
+            properties: {
+                content: {
+                    type: "string",
+                    description: "The markdown content of the note",
+                },
+            },
+            required: ["content"],
+        };
+
+        const pathSchema = {
+            type: "object" as const,
+            properties: {
+                path: {
+                    type: "string",
+                    description: "The path to the note in the vault",
+                },
+            },
+            required: ["path"],
+        };
+
+        const notesListSchema = {
+            type: "object" as const,
+            properties: {
+                notes: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Array of note paths",
+                },
+            },
+            required: ["notes"],
+        };
+
+        const linksListSchema = {
+            type: "object" as const,
+            properties: {
+                links: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Array of linked note paths",
+                },
+            },
+            required: ["links"],
+        };
+
         return [
             {
                 name: "read_note",
@@ -60,6 +107,10 @@ export class MCPTools {
                         },
                     },
                     required: ["path"],
+                },
+                outputSchema: contentSchema,
+                annotations: {
+                    readOnlyHint: true,
                 },
             },
             {
@@ -119,6 +170,10 @@ export class MCPTools {
                         },
                     },
                 },
+                outputSchema: notesListSchema,
+                annotations: {
+                    readOnlyHint: true,
+                },
             },
             {
                 name: "get_linked_notes",
@@ -134,6 +189,10 @@ export class MCPTools {
                         },
                     },
                     required: ["path"],
+                },
+                outputSchema: linksListSchema,
+                annotations: {
+                    readOnlyHint: true,
                 },
             },
             {
@@ -155,6 +214,26 @@ export class MCPTools {
                     },
                     required: ["path"],
                 },
+                outputSchema: {
+                    type: "object",
+                    properties: {
+                        notes: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Array of note paths in the directory",
+                        },
+                        folders: {
+                            type: "array",
+                            items: { type: "string" },
+                            description:
+                                "Array of subfolder paths in the directory",
+                        },
+                    },
+                    required: ["notes", "folders"],
+                },
+                annotations: {
+                    readOnlyHint: true,
+                },
             },
             {
                 name: "list_notes_by_tag",
@@ -171,6 +250,10 @@ export class MCPTools {
                         },
                     },
                     required: ["tags"],
+                },
+                outputSchema: notesListSchema,
+                annotations: {
+                    readOnlyHint: true,
                 },
             },
             {
@@ -202,6 +285,10 @@ export class MCPTools {
                         },
                     },
                     required: ["path"],
+                },
+                outputSchema: contentSchema,
+                annotations: {
+                    readOnlyHint: true,
                 },
             },
             {
@@ -249,6 +336,11 @@ export class MCPTools {
                     },
                     required: ["path"],
                 },
+                outputSchema: pathSchema,
+                annotations: {
+                    readOnlyHint: false,
+                    idempotentHint: false,
+                },
             },
             {
                 name: "append_to_note",
@@ -285,6 +377,12 @@ export class MCPTools {
                     },
                     required: ["path", "content"],
                 },
+                outputSchema: pathSchema,
+                annotations: {
+                    readOnlyHint: false,
+                    idempotentHint: false,
+                    destructiveHint: true,
+                },
             },
             {
                 name: "update_note",
@@ -309,6 +407,12 @@ export class MCPTools {
                     },
                     required: ["path", "content"],
                 },
+                outputSchema: pathSchema,
+                annotations: {
+                    readOnlyHint: false,
+                    idempotentHint: false,
+                    destructiveHint: true,
+                },
             },
             {
                 name: "delete_note",
@@ -328,6 +432,12 @@ export class MCPTools {
                     },
                     required: ["path"],
                 },
+                outputSchema: pathSchema,
+                annotations: {
+                    readOnlyHint: false,
+                    idempotentHint: false,
+                    destructiveHint: true,
+                },
             },
             {
                 name: "get_current_date",
@@ -339,6 +449,49 @@ export class MCPTools {
                 inputSchema: {
                     type: "object",
                     properties: {},
+                },
+                outputSchema: {
+                    type: "object",
+                    properties: {
+                        iso: {
+                            type: "string",
+                            description: "Date in ISO format (YYYY-MM-DD)",
+                        },
+                        formatted: {
+                            type: "string",
+                            description:
+                                "Human-readable date (e.g., 'January 20, 2025')",
+                        },
+                        timestamp: {
+                            type: "number",
+                            description: "Unix timestamp in milliseconds",
+                        },
+                        year: {
+                            type: "number",
+                            description: "Year (e.g., 2025)",
+                        },
+                        month: { type: "number", description: "Month (1-12)" },
+                        day: {
+                            type: "number",
+                            description: "Day of month (1-31)",
+                        },
+                        dayOfWeek: {
+                            type: "string",
+                            description: "Day name (e.g., 'Monday')",
+                        },
+                    },
+                    required: [
+                        "iso",
+                        "formatted",
+                        "timestamp",
+                        "year",
+                        "month",
+                        "day",
+                        "dayOfWeek",
+                    ],
+                },
+                annotations: {
+                    readOnlyHint: true,
                 },
             },
             {
@@ -372,6 +525,10 @@ export class MCPTools {
                     },
                     required: ["period"],
                 },
+                outputSchema: pathSchema,
+                annotations: {
+                    readOnlyHint: true,
+                },
             },
             {
                 name: "list_templates",
@@ -383,6 +540,30 @@ export class MCPTools {
                 inputSchema: {
                     type: "object",
                     properties: {},
+                },
+                outputSchema: {
+                    type: "object",
+                    properties: {
+                        templates_folder: {
+                            type: "string",
+                            description:
+                                "Path to the templates folder (if Templater enabled)",
+                        },
+                        templates: {
+                            type: "array",
+                            items: { type: "string" },
+                            description:
+                                "List of template file paths (if Templater enabled)",
+                        },
+                        templater_enabled: {
+                            type: "boolean",
+                            description: "Whether Templater plugin is enabled",
+                        },
+                    },
+                    required: ["templater_enabled"],
+                },
+                annotations: {
+                    readOnlyHint: true,
                 },
             },
         ];
