@@ -111,7 +111,7 @@ export class MCPHandler {
                 ],
             });
         } catch (error) {
-            this.logger.error(error, `Tool ${toolName} failed`);
+            this.logger.error(error, `Tool ${toolName} failed`, args);
             const message =
                 error instanceof Error ? error.message : String(error);
             return this.createError(
