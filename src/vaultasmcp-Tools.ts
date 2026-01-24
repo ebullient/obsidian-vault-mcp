@@ -86,7 +86,7 @@ export class MCPTools {
                 links: {
                     type: "array",
                     items: { type: "string" },
-                    description: "Array of linked note paths",
+                    description: "Array of paths to linked notes",
                 },
             },
             required: ["links"],
@@ -118,7 +118,7 @@ export class MCPTools {
                 description:
                     "Search for notes by folder path, tag, frontmatter attribute, file mtime, or text content. " +
                     "Multiple parameters narrow results (AND logic). " +
-                    "Returns matching note paths.",
+                    "Returns paths of matching notes.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -199,7 +199,7 @@ export class MCPTools {
                 name: "list_notes",
                 description:
                     "List notes and folders in a directory. " +
-                    "Returns immediate children only (non-recursive). " +
+                    "Returns paths of immediate children only (non-recursive). " +
                     "Use to explore vault structure incrementally.",
                 inputSchema: {
                     type: "object",
@@ -238,7 +238,7 @@ export class MCPTools {
             {
                 name: "list_notes_by_tag",
                 description:
-                    "Get all notes that have specific tag(s). Returns matching note paths.",
+                    "Return paths for all notes that have specific tag(s).",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -535,8 +535,8 @@ export class MCPTools {
                 description:
                     "List available note templates and Templater " +
                     "plugin status. " +
-                    "Returns templates folder path, list of templates, " +
-                    "and whether Templater plugin is enabled.",
+                    "Returns path of templates folder, list of templates, " +
+                    "and whether or not the Templater plugin is enabled.",
                 inputSchema: {
                     type: "object",
                     properties: {},
@@ -582,8 +582,8 @@ export class MCPTools {
                     args.folder as string | undefined,
                     args.text as string | undefined,
                     args.mtime as
-                        | { before?: string; after?: string }
-                        | undefined,
+                    | { before?: string; after?: string }
+                    | undefined,
                     args.frontmatter as Record<string, string> | undefined,
                 );
             case "get_linked_notes":
