@@ -114,6 +114,55 @@ export class MCPTools {
                 },
             },
             {
+                name: "read_multiple_notes",
+                description:
+                    "Read the content of multiple notes in a single request. " +
+                    "Returns an object mapping each path to its content or " +
+                    "error message. More efficient than multiple read_note " +
+                    "calls for batch operations.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        paths: {
+                            type: "array",
+                            items: { type: "string" },
+                            description:
+                                "Array of note paths to read " +
+                                "(e.g., ['folder/note1.md', 'folder/note2.md'])",
+                        },
+                    },
+                    required: ["paths"],
+                },
+                outputSchema: {
+                    type: "object" as const,
+                    properties: {
+                        notes: {
+                            type: "object",
+                            additionalProperties: {
+                                type: "object",
+                                properties: {
+                                    content: {
+                                        type: "string",
+                                        description: "The markdown content",
+                                    },
+                                    error: {
+                                        type: "string",
+                                        description:
+                                            "Error message if read failed",
+                                    },
+                                },
+                            },
+                            description:
+                                "Object mapping paths to content or error",
+                        },
+                    },
+                    required: ["notes"],
+                },
+                annotations: {
+                    readOnlyHint: true,
+                },
+            },
+            {
                 name: "search_notes",
                 description:
                     "Search for notes by folder path, tag, frontmatter attribute, file mtime, or text content. " +
@@ -576,14 +625,16 @@ export class MCPTools {
         switch (toolName) {
             case "read_note":
                 return await this.readNote(args.path as string);
+            case "read_multiple_notes":
+                return await this.readMultipleNotes(args.paths as string[]);
             case "search_notes":
                 return await this.searchNotes(
                     args.tag as string | undefined,
                     args.folder as string | undefined,
                     args.text as string | undefined,
                     args.mtime as
-                    | { before?: string; after?: string }
-                    | undefined,
+                        | { before?: string; after?: string }
+                        | undefined,
                     args.frontmatter as Record<string, string> | undefined,
                 );
             case "get_linked_notes":
@@ -635,6 +686,26 @@ export class MCPTools {
 
     private async readNote(path: string): Promise<{ content: string }> {
         return await this.noteHandler.readNote(path);
+    }
+
+    private async readMultipleNotes(paths: string[]): Promise<{
+        notes: Record<string, { content?: string; error?: string }>;
+    }> {
+        const results: Record<string, { content?: string; error?: string }> =
+            {};
+
+        for (const path of paths) {
+            try {
+                const result = await this.noteHandler.readNote(path);
+                results[path] = { content: result.content };
+            } catch (e) {
+                results[path] = {
+                    error: e instanceof Error ? e.message : String(e),
+                };
+            }
+        }
+
+        return { notes: results };
     }
 
     private async createNote(
