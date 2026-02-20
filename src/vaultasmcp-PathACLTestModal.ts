@@ -30,6 +30,8 @@ export class PathACLTestModal extends Modal {
             pathACL: () => acl,
             serverPort: () => 0,
             bearerToken: () => "",
+            serverHost: () => "localhost",
+            serverVersion: () => "0.1",
         };
 
         this.aclChecker = new PathACLChecker(currentSettings, testLogger);
