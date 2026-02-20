@@ -47,6 +47,10 @@
     "fastify": "^5.2.0",
     "obsidian-daily-notes-interface": "^0.9.4"
   },
+  "overrides": {
+    "glob": "13.0.6",
+    "minimatch": "10.2.2"
+  },
   "auto-changelog": {
     "backfillLimit": false,
     "commitLimit": false,
