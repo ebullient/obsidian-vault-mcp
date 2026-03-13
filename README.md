@@ -1,5 +1,7 @@
 # Vault as MCP
 
+![GitHub all releases](https://img.shields.io/github/downloads/ebullient/obsidian-vault-mcp/total?color=success)
+
 An Obsidian plugin that runs an MCP (Model Context Protocol) server, enabling external LLM tools to access your vault. Supports HTTP transport natively (Open WebUI, remote LLMs) and stdio transport via included bridge script (Claude Desktop).
 
 > **Important Notes**
@@ -90,13 +92,24 @@ In Open WebUI's MCP configuration, add a new server: `http://localhost:8765/mcp`
 
 If Open WebUI is running on a remote machine (e.g., via Tailscale): `http://<your-machine-ip>:8765/mcp`
 
-**With authentication enabled**, add the bearer token to your MCP server configuration in Open WebUI using the `Authorization` header:
+**With authentication enabled**, add the bearer token from your MCP server configuration in Open WebUI using the `Authorization` header:
 
 ```http
 Authorization: Bearer <your-token-here>
 ```
 
-### Connecting from Claude Desktop
+### Connecting with Claude Code
+
+```console
+claude mcp add -t http -s local Obsidian http://localhost:8765/mcp -H "Authorization: Bearer <token>"
+```
+
+Notes:
+
+- Make sure your port matches what you've configured in plugin settings
+- Enable authentication and use the bearer token from plugin settings
+
+### Claude Desktop
 
 Claude Desktop uses stdio transport for MCP servers, so you'll need the
 `mcp-bridge.js` script to bridge stdio to HTTP.
@@ -104,9 +117,9 @@ Claude Desktop uses stdio transport for MCP servers, so you'll need the
 **Requirements:**
 
 - Node.js 18+ (for native fetch support)
-- VaultAsMCP plugin running in Obsidian
+- "Vault as MCP" plugin enabled with the server running in Obsidian
 
-**Setup:**
+**Setup a stdio bridge (alternative to http):**
 
 1. Download `mcp-bridge.js` from the [latest GitHub
    release](https://github.com/ebullient/obsidian-vault-mcp/releases/latest)
