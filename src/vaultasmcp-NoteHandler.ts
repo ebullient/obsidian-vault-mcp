@@ -49,10 +49,20 @@ export class NoteHandler {
      * Read a note's content
      * ACL: Requires read access
      */
-    async readNote(path: string): Promise<{ content: string }> {
+    async readNote(
+        path: string,
+        sections?: string[],
+    ): Promise<{ content: string }> {
         const file = this.getFileWithAclCheck(path);
         const content = await this.app.vault.cachedRead(file);
-        return { content };
+
+        if (!sections || sections.length === 0) {
+            return { content };
+        }
+
+        return {
+            content: this.extractSections(file, content, sections),
+        };
     }
 
     /**
@@ -517,6 +527,56 @@ export class NoteHandler {
         return expandedContent;
     }
 
+    /**
+     * Find the end offset of a heading's section
+     * (up to the next heading at same or higher level).
+     */
+    private findSectionEnd(
+        headings: { level: number; position: { start: { offset: number } } }[],
+        headingIndex: number,
+        fileLength: number,
+    ): number {
+        const level = headings[headingIndex].level;
+        for (const h of headings.slice(headingIndex + 1)) {
+            if (h.level <= level) {
+                return h.position.start.offset;
+            }
+        }
+        return fileLength;
+    }
+
+    /**
+     * Extract content for named sections (by heading text).
+     * Case-insensitive match; includes subheadings.
+     */
+    private extractSections(
+        file: TFile,
+        fileContent: string,
+        sections: string[],
+    ): string {
+        const cache = this.app.metadataCache.getFileCache(file);
+        if (!cache?.headings || cache.headings.length === 0) {
+            return "";
+        }
+
+        const normalizedNames = sections.map((s) => this.normalizeHeading(s));
+        const headings = cache.headings;
+        const parts: string[] = [];
+
+        for (let i = 0; i < headings.length; i++) {
+            const norm = this.normalizeHeading(headings[i].heading);
+            if (!normalizedNames.includes(norm)) {
+                continue;
+            }
+
+            const start = headings[i].position.start.offset;
+            const end = this.findSectionEnd(headings, i, fileContent.length);
+            parts.push(fileContent.substring(start, end).trim());
+        }
+
+        return parts.join("\n\n");
+    }
+
     private extractSubpathContent(
         file: TFile,
         fileContent: string,
@@ -532,7 +592,6 @@ export class NoteHandler {
             const blockId = subpath.substring(1);
             const block = cache.blocks?.[blockId];
             if (block) {
-                // Extract the full block content using offsets
                 const start = block.position.start.offset;
                 const end = block.position.end.offset;
                 return fileContent.substring(start, end).trim();
@@ -545,28 +604,27 @@ export class NoteHandler {
 
         // Check for heading reference
         const targetNormalized = this.normalizeHeading(subpath);
-        const heading = cache.headings?.find(
+        const headings = cache.headings;
+        if (!headings) {
+            this.logger.debug(`Subpath not found: #${subpath} in ${file.path}`);
+            return "";
+        }
+
+        const headingIndex = headings.findIndex(
             (h) => this.normalizeHeading(h.heading) === targetNormalized,
         );
 
-        if (heading && cache.headings) {
-            // Find the end of this section
-            const start = heading.position.end.offset;
-            let end = fileContent.length;
-
-            // Find next heading at same or higher level
-            const headingIndex = cache.headings.indexOf(heading);
-            for (const h of cache.headings.slice(headingIndex + 1)) {
-                if (h.level <= heading.level) {
-                    end = h.position.start.offset;
-                    break;
-                }
-            }
-
+        if (headingIndex >= 0) {
+            // Content after the heading line, up to next peer
+            const start = headings[headingIndex].position.end.offset;
+            const end = this.findSectionEnd(
+                headings,
+                headingIndex,
+                fileContent.length,
+            );
             return fileContent.substring(start, end).trim();
         }
 
-        // If no matching subpath found, return empty
         this.logger.debug(`Subpath not found: #${subpath} in ${file.path}`);
         return "";
     }

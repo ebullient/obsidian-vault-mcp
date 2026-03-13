@@ -96,14 +96,27 @@ export class MCPTools {
             {
                 name: "read_note",
                 description:
-                    "Read the full content of a note by its path. Returns the raw markdown content.",
+                    "Read the content of a note by its path. " +
+                    "Returns raw markdown; optionally " +
+                    "filtered to named sections.",
                 inputSchema: {
                     type: "object",
                     properties: {
                         path: {
                             type: "string",
                             description:
-                                "The path to the note within the vault (e.g., 'folder/note.md')",
+                                "The path to the note within the vault " +
+                                "(e.g., 'folder/note.md')",
+                        },
+                        sections: {
+                            type: "array",
+                            items: { type: "string" },
+                            description:
+                                "Return only the content of the " +
+                                "named sections (by heading text, " +
+                                "case-insensitive, including " +
+                                "subheadings); omit all other " +
+                                "note content.",
                         },
                     },
                     required: ["path"],
@@ -624,7 +637,10 @@ export class MCPTools {
     ): Promise<unknown> {
         switch (toolName) {
             case "read_note":
-                return await this.readNote(args.path as string);
+                return await this.readNote(
+                    args.path as string,
+                    args.sections as string[] | undefined,
+                );
             case "read_multiple_notes":
                 return await this.readMultipleNotes(args.paths as string[]);
             case "search_notes":
@@ -684,8 +700,11 @@ export class MCPTools {
         }
     }
 
-    private async readNote(path: string): Promise<{ content: string }> {
-        return await this.noteHandler.readNote(path);
+    private async readNote(
+        path: string,
+        sections?: string[],
+    ): Promise<{ content: string }> {
+        return await this.noteHandler.readNote(path, sections);
     }
 
     private async readMultipleNotes(paths: string[]): Promise<{
