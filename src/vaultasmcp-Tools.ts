@@ -502,6 +502,39 @@ export class MCPTools {
                 },
             },
             {
+                name: "rename_note",
+                description:
+                    "Rename or move a note to a new path. " +
+                    "Updates all internal vault links that reference " +
+                    "the note. Fails if the note does not exist or " +
+                    "the destination path already exists.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        path: {
+                            type: "string",
+                            description:
+                                "Current path to the note " +
+                                "(e.g., 'folder/old-name.md')",
+                        },
+                        new_path: {
+                            type: "string",
+                            description:
+                                "New path for the note; use a " +
+                                "different folder to move it " +
+                                "(e.g., 'other-folder/new-name.md')",
+                        },
+                    },
+                    required: ["path", "new_path"],
+                },
+                outputSchema: pathSchema,
+                annotations: {
+                    readOnlyHint: false,
+                    idempotentHint: false,
+                    destructiveHint: false,
+                },
+            },
+            {
                 name: "get_current_date",
                 description:
                     "Get the current date and time information. " +
@@ -686,6 +719,11 @@ export class MCPTools {
                 );
             case "delete_note":
                 return await this.deleteNote(args.path as string);
+            case "rename_note":
+                return await this.noteHandler.renameNote(
+                    args.path as string,
+                    args.new_path as string,
+                );
             case "get_current_date":
                 return this.getCurrentDate();
             case "get_periodic_note_path":

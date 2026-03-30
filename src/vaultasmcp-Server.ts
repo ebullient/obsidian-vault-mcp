@@ -43,7 +43,7 @@ export class MCPServer {
             const bearerToken = this.current.bearerToken();
             if (bearerToken) {
                 const auth = request.headers.authorization;
-                if (!auth || !auth.startsWith("Bearer ")) {
+                if (!auth?.startsWith("Bearer ")) {
                     this.logger.warn("Request missing bearer token");
                     reply.code(401).send({ error: "Missing bearer token" });
                     return;

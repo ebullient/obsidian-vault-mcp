@@ -1,4 +1,4 @@
-import { type App, normalizePath, TFile, TFolder } from "obsidian";
+import { type App, normalizePath, TFile } from "obsidian";
 import type { Logger } from "./@types/settings";
 import type { PathACLChecker } from "./vaultasmcp-PathACL";
 import type { TemplateHandler } from "./vaultasmcp-TemplateHandler";
@@ -109,13 +109,15 @@ export class NoteHandler {
         }
 
         // Create parent folders if needed
-        const parts = normalizedPath.split("/");
-        const dir = parts.slice(0, parts.length - 1).join("/");
-        if (
-            parts.length > 1 &&
-            !(this.app.vault.getAbstractFileByPath(dir) instanceof TFolder)
-        ) {
-            await this.app.vault.createFolder(dir);
+        const dir = normalizedPath.split("/").slice(0, -1).join("/");
+        if (dir) {
+            const dirItem = this.app.vault.getAbstractFileByPath(dir);
+            if (dirItem instanceof TFile) {
+                throw new Error(`Path exists as a file, not a folder: ${dir}`);
+            }
+            if (!dirItem) {
+                await this.app.vault.createFolder(dir);
+            }
         }
 
         // Create the file (binary or text)
@@ -206,6 +208,48 @@ export class NoteHandler {
 
         this.logger.debug(`Deleted note: ${file.path}`);
         return { path: file.path };
+    }
+
+    /**
+     * Rename or move a note
+     * ACL: Requires write access to both old and new paths
+     */
+    async renameNote(path: string, newPath: string): Promise<{ path: string }> {
+        // Write ACL check on source (write=true); also fetches the TFile
+        const file = this.getFileWithAclCheck(path, true);
+
+        // Auto-append .md only if source is a markdown file
+        let normalizedNew = normalizePath(newPath);
+        if (file.extension === "md" && !normalizedNew.endsWith(".md")) {
+            normalizedNew = `${normalizedNew}.md`;
+        }
+
+        // Write ACL check on destination
+        this.aclChecker.checkWriteAccess(normalizedNew);
+
+        // Fail fast if destination already exists
+        const existing = this.app.vault.getAbstractFileByPath(normalizedNew);
+        if (existing) {
+            throw new Error(`File already exists: ${normalizedNew}`);
+        }
+
+        // Create parent folders if needed
+        const dir = normalizedNew.split("/").slice(0, -1).join("/");
+        if (dir) {
+            const dirItem = this.app.vault.getAbstractFileByPath(dir);
+            if (dirItem instanceof TFile) {
+                throw new Error(`Path exists as a file, not a folder: ${dir}`);
+            }
+            if (!dirItem) {
+                await this.app.vault.createFolder(dir);
+            }
+        }
+
+        // fileManager.renameFile also updates all internal links
+        await this.app.fileManager.renameFile(file, normalizedNew);
+
+        this.logger.debug(`Renamed note: ${file.path} → ${normalizedNew}`);
+        return { path: normalizedNew };
     }
 
     private findHeadingEndOffset(
