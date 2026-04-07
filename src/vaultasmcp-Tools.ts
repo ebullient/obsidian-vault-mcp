@@ -3,6 +3,9 @@ import {
     getAllTags,
     moment,
     normalizePath,
+    prepareSimpleSearch,
+    type SearchResultContainer,
+    sortSearchResults,
     TFile,
     TFolder,
 } from "obsidian";
@@ -196,7 +199,12 @@ export class MCPTools {
                         },
                         text: {
                             type: "string",
-                            description: "Text to search for in note content",
+                            description:
+                                "Text to search for in note content; " +
+                                "space-separated words must all appear " +
+                                "in the note (in any order); wrap a " +
+                                "phrase in double quotes for an exact " +
+                                'match, e.g. `meeting "action items"`.',
                         },
                         mtime: {
                             type: "object",
@@ -1011,18 +1019,32 @@ export class MCPTools {
             });
         }
         if (text) {
-            const matchingFiles: TFile[] = [];
+            const { phrases, words } = this.parseTextQuery(text);
+            const searcher = words ? prepareSimpleSearch(words) : null;
+            type ScoredFile = SearchResultContainer & { file: TFile };
+            const scored: ScoredFile[] = [];
             for (const file of files) {
                 const content = await this.app.vault.cachedRead(file);
-                if (content.toLowerCase().includes(text.toLowerCase())) {
-                    matchingFiles.push(file);
+                const lower = content.toLowerCase();
+                if (phrases.some((p) => !lower.includes(p.toLowerCase()))) {
+                    continue;
+                }
+                if (searcher) {
+                    const result = searcher(content);
+                    if (result === null) continue;
+                    scored.push({ file, match: result });
+                } else {
+                    scored.push({ file, match: { score: 0, matches: [] } });
                 }
             }
-            files = matchingFiles;
+            sortSearchResults(scored);
+            files = scored.map((r) => r.file);
         }
 
         return {
-            notes: files.map((f) => f.path).sort(),
+            notes: text
+                ? files.map((f) => f.path)
+                : files.map((f) => f.path).sort(),
         };
     }
 
@@ -1147,5 +1169,25 @@ export class MCPTools {
 
     private normalizeTag(tag: string): string {
         return tag.startsWith("#") ? tag.substring(1) : tag;
+    }
+
+    /**
+     * Parse a text query into exact phrases (quoted) and
+     * remaining unquoted words for use with prepareSimpleSearch.
+     * e.g. `meeting "action items"` →
+     *   phrases: ["action items"], words: "meeting"
+     */
+    private parseTextQuery(query: string): {
+        phrases: string[];
+        words: string;
+    } {
+        const phrases: string[] = [];
+        const remaining = query
+            .replace(/"([^"]*)"/g, (_, p: string) => {
+                if (p.trim()) phrases.push(p);
+                return " ";
+            })
+            .trim();
+        return { phrases, words: remaining };
     }
 }
