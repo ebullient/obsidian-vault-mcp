@@ -113,7 +113,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                 "Glob patterns for paths that cannot be read or written; one pattern per line.",
             )
             .addTextArea((text) => {
-                text.setPlaceholder(".obsidian/**\nprivate/**\nsecrets.md")
+                text.setPlaceholder("private/**\nsecrets.md")
                     .setValue(this.newSettings.pathACL.forbidden.join("\n"))
                     .onChange((value) => {
                         this.newSettings.pathACL.forbidden = value

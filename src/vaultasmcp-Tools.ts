@@ -851,7 +851,7 @@ export class MCPTools {
             throw new Error(`Invalid period type: ${period}`);
         }
 
-        const targetDate = date ? moment(date) : moment();
+        const targetDate = date ? window.moment(date) : window.moment();
 
         const settings = this.getPeriodicSettings(period, granularity);
 
@@ -984,30 +984,36 @@ export class MCPTools {
                     return false;
                 }
                 return Object.entries(frontmatter).every(([key, value]) => {
-                    const fmValue = fm[key];
-                    if (fmValue === undefined || fmValue === null) {
+                    const fmValue: unknown = fm[key];
+                    if (
+                        fmValue === undefined ||
+                        fmValue === null ||
+                        typeof fmValue === "object"
+                    ) {
                         return false;
                     }
-                    return (
-                        String(fmValue).toLowerCase() === value.toLowerCase()
-                    );
+                    const fmStr = fmValue as string | number | boolean;
+                    return String(fmStr).toLowerCase() === value.toLowerCase();
                 });
             });
         }
         if (mtime) {
             const before = mtime.before
-                ? moment(mtime.before).endOf("day")
+                ? window.moment(mtime.before).endOf("day")
                 : undefined;
             const after = mtime.after
-                ? moment(mtime.after).startOf("day")
+                ? window.moment(mtime.after).startOf("day")
                 : undefined;
             files = files.filter((f) => {
                 const cache = this.app.metadataCache.getFileCache(f);
-                const lastModified = cache?.frontmatter?.last_modified;
-                let date = moment(f.stat.mtime);
-                if (lastModified) {
+                const lastModified: unknown = cache?.frontmatter?.last_modified;
+                let date = window.moment(f.stat.mtime);
+                if (
+                    typeof lastModified === "string" ||
+                    typeof lastModified === "number"
+                ) {
                     // Use frontmatter date (YYYY-MM-DD comparison)
-                    date = moment(String(lastModified));
+                    date = window.moment(lastModified);
                 }
                 if (before && date.isAfter(before, "day")) {
                     return false;

@@ -6,7 +6,7 @@ export const DEFAULT_SETTINGS: VaultAsMCPSettings = {
     autoStart: true,
     debug: false,
     pathACL: {
-        forbidden: [".obsidian/**"],
+        forbidden: [],
         readOnly: [],
         writable: [],
     },
