@@ -31,7 +31,7 @@
     "@biomejs/biome": "2.4.7",
     "@modelcontextprotocol/inspector": "^0.21.1",
     "@types/node": "^25.0.9",
-    "@typescript-eslint/parser": "^8.46.4",
+    "@typescript-eslint/parser": "^8.57.1",
     "auto-changelog": "^2.5.0",
     "builtin-modules": "^5.0.0",
     "esbuild": "^0.27.0",
