@@ -28,7 +28,7 @@
   "repository": "github.com:ebullient/obsidian-vault-mcp",
   "license": "MIT",
   "devDependencies": {
-    "@biomejs/biome": "2.4.7",
+    "@biomejs/biome": "2.4.8",
     "@modelcontextprotocol/inspector": "^0.21.1",
     "@types/node": "^25.0.9",
     "@typescript-eslint/parser": "^8.46.4",
