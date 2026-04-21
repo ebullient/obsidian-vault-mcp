@@ -1,6 +1,7 @@
 import esbuild from "esbuild";
+import { builtinModules } from "node:module";
+const builtins = [...builtinModules, ...builtinModules.map(m => `node:${m}`)];
 import process from "node:process";
-import builtins from 'builtin-modules';
 import { readFileSync } from 'node:fs';
 
 const banner = `/*
