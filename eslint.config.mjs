@@ -8,7 +8,8 @@ export default defineConfig([
     ...obsidianmd.configs.recommended,
     globalIgnores([
         "tests/",
-        "package.json"
+        "package.json",
+        "*.mjs",
     ]),
     {
         files: ["src/**/*.ts"],
@@ -32,19 +33,6 @@ export default defineConfig([
                     enforceCamelCaseLower: true,
                 },
             ],
-        },
-    },
-    {
-        // Config files - no type checking, just basic linting
-        files: ["**/*.mjs"],
-        languageOptions: {
-            ecmaVersion: 2022,
-            sourceType: "module",
-            globals: {
-                ...globals.node,
-                console: "readonly",
-                URL: "readonly",
-            }
         },
     },
 ]);

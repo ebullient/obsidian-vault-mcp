@@ -1,7 +1,7 @@
 import {
     type App,
     getAllTags,
-    moment,
+    type moment,
     normalizePath,
     prepareSimpleSearch,
     type SearchResultContainer,
@@ -821,7 +821,7 @@ export class MCPTools {
         day: number;
         dayOfWeek: string;
     } {
-        const now = moment();
+        const now = activeWindow.moment();
         return {
             iso: now.format("YYYY-MM-DD"),
             formatted: now.format("MMMM D, YYYY"),
@@ -851,7 +851,9 @@ export class MCPTools {
             throw new Error(`Invalid period type: ${period}`);
         }
 
-        const targetDate = date ? window.moment(date) : window.moment();
+        const targetDate = date
+            ? activeWindow.moment(date)
+            : activeWindow.moment();
 
         const settings = this.getPeriodicSettings(period, granularity);
 
@@ -999,21 +1001,21 @@ export class MCPTools {
         }
         if (mtime) {
             const before = mtime.before
-                ? window.moment(mtime.before).endOf("day")
+                ? activeWindow.moment(mtime.before).endOf("day")
                 : undefined;
             const after = mtime.after
-                ? window.moment(mtime.after).startOf("day")
+                ? activeWindow.moment(mtime.after).startOf("day")
                 : undefined;
             files = files.filter((f) => {
                 const cache = this.app.metadataCache.getFileCache(f);
                 const lastModified: unknown = cache?.frontmatter?.last_modified;
-                let date = window.moment(f.stat.mtime);
+                let date = activeWindow.moment(f.stat.mtime);
                 if (
                     typeof lastModified === "string" ||
                     typeof lastModified === "number"
                 ) {
                     // Use frontmatter date (YYYY-MM-DD comparison)
-                    date = window.moment(lastModified);
+                    date = activeWindow.moment(lastModified);
                 }
                 if (before && date.isAfter(before, "day")) {
                     return false;

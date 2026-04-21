@@ -284,16 +284,16 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
             switch (status) {
                 case "running":
                     statusText.setText(
-                        `🟢 server is running on port ${this.plugin.settings.serverPort}`,
+                        `🟢 Server is running on port ${this.plugin.settings.serverPort}.`,
                     );
                     statusText.addClass("vault-mcp-status-running");
                     break;
                 case "error":
-                    statusText.setText("🔴 server encountered an error");
+                    statusText.setText("🔴 Server encountered an error.");
                     statusText.addClass("vault-mcp-status-error");
                     break;
                 case "stopped":
-                    statusText.setText("⚪️ server is stopped");
+                    statusText.setText("⚪️ Server is stopped.");
                     statusText.addClass("vault-mcp-status-stopped");
                     break;
             }
