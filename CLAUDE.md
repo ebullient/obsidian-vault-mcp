@@ -43,5 +43,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed code style guidelines and ex
 ## Quality Assurance
 
 - Run `npm run build` after significant changes (includes linting via prebuild)
+- Run `npm run lint` to check Biome linting without building
 - Use `npm run fix` to auto-correct linting issues
 - Reference specific line numbers when discussing issues (format: `file.ts:123`)

@@ -306,6 +306,56 @@ export class MCPTools {
                 },
             },
             {
+                name: "list_recent_notes",
+                description:
+                    "List recently modified notes, sorted by " +
+                    "modification time (newest first). " +
+                    "Searches recursively under the given path prefix.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        path: {
+                            type: "string",
+                            description:
+                                "Path prefix to search under " +
+                                "(e.g., 'agents' returns all notes " +
+                                "anywhere under agents/). " +
+                                "Omit or use empty string for entire vault.",
+                        },
+                        since: {
+                            type: "string",
+                            description:
+                                "Only include notes modified within " +
+                                "this duration or since this date. " +
+                                "Relative: '7d', '30d', '2d'. " +
+                                "Absolute: ISO date '2025-01-01'.",
+                        },
+                        limit: {
+                            type: "number",
+                            description:
+                                "Maximum number of notes to return " +
+                                "(default: 20, max: 50).",
+                        },
+                    },
+                },
+                outputSchema: {
+                    type: "object",
+                    properties: {
+                        notes: {
+                            type: "array",
+                            items: { type: "string" },
+                            description:
+                                "Note paths sorted by modification " +
+                                "time, newest first.",
+                        },
+                    },
+                    required: ["notes"],
+                },
+                annotations: {
+                    readOnlyHint: true,
+                },
+            },
+            {
                 name: "list_notes_by_tag",
                 description:
                     "Return paths for all notes that have specific tag(s).",
@@ -698,6 +748,12 @@ export class MCPTools {
                 return this.getLinkedNotes(args.path as string);
             case "list_notes":
                 return this.listNotes(args.path as string);
+            case "list_recent_notes":
+                return this.listRecentNotes(
+                    args.path as string | undefined,
+                    args.since as string | undefined,
+                    args.limit as number | undefined,
+                );
             case "list_notes_by_tag":
                 return this.listNotesByTag(args.tags as string[]);
             case "read_note_with_embeds":
@@ -1149,6 +1205,52 @@ export class MCPTools {
         return {
             notes: notes.sort(),
             folders: folders.sort(),
+        };
+    }
+
+    private listRecentNotes(
+        path?: string,
+        since?: string,
+        limit?: number,
+    ): { notes: string[] } {
+        const normalizedPath = path ? normalizePath(path) : "";
+        const maxResults = Math.min(limit ?? 20, 50);
+
+        let cutoff: ReturnType<typeof activeWindow.moment> | undefined;
+        if (since) {
+            const rel = since.match(/^(\d+)d$/i);
+            cutoff = rel
+                ? activeWindow.moment().subtract(Number(rel[1]), "days")
+                : activeWindow.moment(since).startOf("day");
+            if (!cutoff.isValid()) {
+                throw new Error(
+                    `Invalid 'since' value: '${since}'. ` +
+                        "Use a relative duration (e.g., '7d') " +
+                        "or ISO date (e.g., '2025-01-01').",
+                );
+            }
+        }
+
+        const files = this.filterAccessibleFiles(
+            this.app.vault.getMarkdownFiles(),
+        ).filter((f) => {
+            if (
+                normalizedPath &&
+                f.path !== normalizedPath &&
+                !f.path.startsWith(`${normalizedPath}/`)
+            ) {
+                return false;
+            }
+            if (cutoff && activeWindow.moment(f.stat.mtime).isBefore(cutoff)) {
+                return false;
+            }
+            return true;
+        });
+
+        files.sort((a, b) => b.stat.mtime - a.stat.mtime);
+
+        return {
+            notes: files.slice(0, maxResults).map((f) => f.path),
         };
     }
 
