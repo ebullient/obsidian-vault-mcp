@@ -52,10 +52,7 @@ export class MCPTools {
         const contentSchema = {
             type: "object" as const,
             properties: {
-                content: {
-                    type: "string",
-                    description: "The markdown content of the note",
-                },
+                content: { type: "string" },
             },
             required: ["content"],
         };
@@ -63,10 +60,7 @@ export class MCPTools {
         const pathSchema = {
             type: "object" as const,
             properties: {
-                path: {
-                    type: "string",
-                    description: "The path to the note in the vault",
-                },
+                path: { type: "string" },
             },
             required: ["path"],
         };
@@ -77,7 +71,6 @@ export class MCPTools {
                 notes: {
                     type: "array",
                     items: { type: "string" },
-                    description: "Array of note paths",
                 },
             },
             required: ["notes"],
@@ -89,7 +82,6 @@ export class MCPTools {
                 links: {
                     type: "array",
                     items: { type: "string" },
-                    description: "Array of paths to linked notes",
                 },
             },
             required: ["links"],
@@ -99,27 +91,22 @@ export class MCPTools {
             {
                 name: "read_note",
                 description:
-                    "Read the content of a note by its path. " +
-                    "Returns raw markdown; optionally " +
-                    "filtered to named sections.",
+                    "Read note content by path. Returns raw markdown; " +
+                    "optionally filtered to named sections.",
                 inputSchema: {
                     type: "object",
                     properties: {
                         path: {
                             type: "string",
                             description:
-                                "The path to the note within the vault " +
-                                "(e.g., 'folder/note.md')",
+                                "Path to the note (e.g., 'folder/note.md')",
                         },
                         sections: {
                             type: "array",
                             items: { type: "string" },
                             description:
-                                "Return only the content of the " +
-                                "named sections (by heading text, " +
-                                "case-insensitive, including " +
-                                "subheadings); omit all other " +
-                                "note content.",
+                                "Return only these sections by heading text " +
+                                "(case-insensitive, includes subheadings).",
                         },
                     },
                     required: ["path"],
@@ -132,19 +119,15 @@ export class MCPTools {
             {
                 name: "read_multiple_notes",
                 description:
-                    "Read the content of multiple notes in a single request. " +
-                    "Returns an object mapping each path to its content or " +
-                    "error message. More efficient than multiple read_note " +
-                    "calls for batch operations.",
+                    "Read multiple notes in one request. " +
+                    "Returns a map of path to content or error.",
                 inputSchema: {
                     type: "object",
                     properties: {
                         paths: {
                             type: "array",
                             items: { type: "string" },
-                            description:
-                                "Array of note paths to read " +
-                                "(e.g., ['folder/note1.md', 'folder/note2.md'])",
+                            description: "Array of note paths to read",
                         },
                     },
                     required: ["paths"],
@@ -157,19 +140,10 @@ export class MCPTools {
                             additionalProperties: {
                                 type: "object",
                                 properties: {
-                                    content: {
-                                        type: "string",
-                                        description: "The markdown content",
-                                    },
-                                    error: {
-                                        type: "string",
-                                        description:
-                                            "Error message if read failed",
-                                    },
+                                    content: { type: "string" },
+                                    error: { type: "string" },
                                 },
                             },
-                            description:
-                                "Object mapping paths to content or error",
                         },
                     },
                     required: ["notes"],
@@ -181,62 +155,48 @@ export class MCPTools {
             {
                 name: "search_notes",
                 description:
-                    "Search for notes by folder path, tag, frontmatter attribute, file mtime, or text content. " +
-                    "Multiple parameters narrow results (AND logic). " +
-                    "Returns paths of matching notes.",
+                    "Search notes by folder, tag, frontmatter, mtime, or text. " +
+                    "Multiple parameters narrow results (AND logic).",
                 inputSchema: {
                     type: "object",
                     properties: {
                         tag: {
                             type: "string",
-                            description:
-                                "Tag to search for (without #, e.g., 'daily' or 'project/work')",
+                            description: "Tag without # (e.g., 'project/work')",
                         },
                         folder: {
                             type: "string",
-                            description:
-                                "Folder path to search within (e.g., 'Daily Notes')",
+                            description: "Folder path to search within",
                         },
                         text: {
                             type: "string",
                             description:
-                                "Text to search for in note content; " +
-                                "space-separated words must all appear " +
-                                "in the note (in any order); wrap a " +
-                                "phrase in double quotes for an exact " +
-                                'match, e.g. `meeting "action items"`.',
+                                "Words must all appear (any order); " +
+                                'quote phrases for exact match: `meeting "action items"`.',
                         },
                         mtime: {
                             type: "object",
                             description:
-                                "Filter by modification time. " +
-                                "Use 'before' and/or 'after' with ISO dates " +
-                                "(e.g., '2025-01-01').",
+                                "Filter by modification time (ISO dates).",
                             properties: {
                                 before: {
                                     type: "string",
                                     description:
-                                        "Include notes modified on or before " +
-                                        "this date (inclusive; ISO format).",
+                                        "On or before this date (inclusive)",
                                 },
                                 after: {
                                     type: "string",
                                     description:
-                                        "Include notes modified on or after " +
-                                        "this date (inclusive; ISO format).",
+                                        "On or after this date (inclusive)",
                                 },
                             },
                         },
                         frontmatter: {
                             type: "object",
                             description:
-                                "Filter by frontmatter properties. " +
-                                "Keys are property names, values are strings " +
-                                "to match (case-insensitive). " +
-                                'Example: {"sphere": "work", "status": "active"}',
-                            additionalProperties: {
-                                type: "string",
-                            },
+                                "Filter by frontmatter key/value (case-insensitive). " +
+                                'E.g., {"status": "active"}',
+                            additionalProperties: { type: "string" },
                         },
                     },
                 },
@@ -247,16 +207,11 @@ export class MCPTools {
             },
             {
                 name: "get_linked_notes",
-                description:
-                    "Get all notes linked from a specific note (outgoing links). Returns paths of linked notes.",
+                description: "Get outgoing links from a note.",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        path: {
-                            type: "string",
-                            description:
-                                "The path to the note (e.g., 'folder/note.md')",
-                        },
+                        path: { type: "string" },
                     },
                     required: ["path"],
                 },
@@ -268,18 +223,14 @@ export class MCPTools {
             {
                 name: "list_notes",
                 description:
-                    "List notes and folders in a directory. " +
-                    "Returns paths of immediate children only (non-recursive). " +
-                    "Use to explore vault structure incrementally.",
+                    "List immediate notes and folders in a directory (non-recursive).",
                 inputSchema: {
                     type: "object",
                     properties: {
                         path: {
                             type: "string",
                             description:
-                                "Directory path to list from " +
-                                "(e.g., 'Daily Notes'). " +
-                                "Use empty string for vault root.",
+                                "Directory path; empty string for vault root.",
                         },
                     },
                     required: ["path"],
@@ -290,13 +241,10 @@ export class MCPTools {
                         notes: {
                             type: "array",
                             items: { type: "string" },
-                            description: "Array of note paths in the directory",
                         },
                         folders: {
                             type: "array",
                             items: { type: "string" },
-                            description:
-                                "Array of subfolder paths in the directory",
                         },
                     },
                     required: ["notes", "folders"],
@@ -308,33 +256,26 @@ export class MCPTools {
             {
                 name: "list_recent_notes",
                 description:
-                    "List recently modified notes, sorted by " +
-                    "modification time (newest first). " +
-                    "Searches recursively under the given path prefix.",
+                    "List recently modified notes, newest first, " +
+                    "recursively under a path prefix.",
                 inputSchema: {
                     type: "object",
                     properties: {
                         path: {
                             type: "string",
                             description:
-                                "Path prefix to search under " +
-                                "(e.g., 'agents' returns all notes " +
-                                "anywhere under agents/). " +
-                                "Omit or use empty string for entire vault.",
+                                "Path prefix to search under; " +
+                                "omit for entire vault.",
                         },
                         since: {
                             type: "string",
                             description:
-                                "Only include notes modified within " +
-                                "this duration or since this date. " +
-                                "Relative: '7d', '30d', '2d'. " +
-                                "Absolute: ISO date '2025-01-01'.",
+                                "Relative ('7d') or ISO date ('2025-01-01').",
                         },
                         limit: {
                             type: "number",
                             description:
-                                "Maximum number of notes to return " +
-                                "(default: 20, max: 50).",
+                                "Max notes to return (default: 20, max: 50).",
                         },
                     },
                 },
@@ -344,9 +285,6 @@ export class MCPTools {
                         notes: {
                             type: "array",
                             items: { type: "string" },
-                            description:
-                                "Note paths sorted by modification " +
-                                "time, newest first.",
                         },
                     },
                     required: ["notes"],
@@ -358,15 +296,14 @@ export class MCPTools {
             {
                 name: "list_notes_by_tag",
                 description:
-                    "Return paths for all notes that have specific tag(s).",
+                    "Return note paths matching any of the given tags.",
                 inputSchema: {
                     type: "object",
                     properties: {
                         tags: {
                             type: "array",
                             items: { type: "string" },
-                            description:
-                                "Array of tags to search for (without #)",
+                            description: "Tags without #",
                         },
                     },
                     required: ["tags"],
@@ -379,29 +316,23 @@ export class MCPTools {
             {
                 name: "read_note_with_embeds",
                 description:
-                    "Read a note with embedded content expanded inline. " +
-                    "Recursively expands embeds up to 2 levels deep, " +
-                    "preventing circular references. " +
-                    "Optionally include regular links and exclude patterns.",
+                    "Read a note with embedded content expanded inline " +
+                    "(up to 2 levels deep, no circular refs).",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        path: {
-                            type: "string",
-                            description:
-                                "The path to the note (e.g., 'folder/note.md')",
-                        },
+                        path: { type: "string" },
                         includeLinks: {
                             type: "boolean",
                             description:
-                                "Include regular links in addition to embeds (default: false)",
+                                "Also expand regular links (default: false)",
                         },
                         excludePatterns: {
                             type: "array",
                             items: { type: "string" },
                             description:
-                                "Regex patterns to exclude links " +
-                                "(matches against '[display](link)' format)",
+                                "Regex patterns to exclude; " +
+                                "matched against '[display](link)'",
                         },
                     },
                     required: ["path"],
@@ -414,9 +345,7 @@ export class MCPTools {
             {
                 name: "create_note",
                 description:
-                    "Create a new note or binary file. Can create from " +
-                    "template or with direct content. " +
-                    "Automatically creates parent folders if needed. " +
+                    "Create a note or binary file; creates parent folders as needed. " +
                     "Fails if file already exists.",
                 inputSchema: {
                     type: "object",
@@ -424,34 +353,24 @@ export class MCPTools {
                         path: {
                             type: "string",
                             description:
-                                "The path for the new file " +
-                                "(e.g., 'folder/note.md' or 'assets/image.png'). " +
-                                ".md extension added automatically for text notes.",
+                                "Path for the new file; .md added automatically for text notes.",
                         },
                         content: {
                             type: "string",
                             description:
-                                "The content for the file. " +
-                                "For text notes: markdown content. " +
-                                "For binary files: base64-encoded data. " +
-                                "If a template is also provided, this content is " +
-                                "appended after the template.",
+                                "Markdown content, or base64 for binary. " +
+                                "Appended after template if both are given.",
                         },
                         template: {
                             type: "string",
                             description:
-                                "Optional template path to use " +
-                                "(e.g., 'templates/daily.md'). " +
-                                "list_templates will show available templates. " +
-                                "Requires Templater plugin to be installed. " +
-                                "If specified with content, template is applied " +
-                                "first, then content is appended.",
+                                "Template path (requires Templater). " +
+                                "Use list_templates to see available options.",
                         },
                         binary: {
                             type: "boolean",
                             description:
-                                "Set to true for binary files (images, PDFs). " +
-                                "Content must be base64-encoded. Default: false.",
+                                "True for binary files; content must be base64. Default: false.",
                         },
                     },
                     required: ["path"],
@@ -465,34 +384,23 @@ export class MCPTools {
             {
                 name: "append_to_note",
                 description:
-                    "Append content to an existing note. " +
-                    "Can append to end of file or after a specific heading. " +
-                    "Fails if note does not exist.",
+                    "Append content to an existing note, " +
+                    "at end of file or after a heading.",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        path: {
-                            type: "string",
-                            description:
-                                "The path to the note " +
-                                "(e.g., 'folder/note.md')",
-                        },
-                        content: {
-                            type: "string",
-                            description: "The content to append",
-                        },
+                        path: { type: "string" },
+                        content: { type: "string" },
                         heading: {
                             type: "string",
                             description:
-                                "Optional heading to append after " +
-                                "(e.g., '## Tasks'). If not specified, appends " +
-                                "to end of file.",
+                                "Append after this heading (e.g., '## Tasks'); " +
+                                "defaults to end of file.",
                         },
                         separator: {
                             type: "string",
                             description:
-                                "Separator between existing content and new " +
-                                "content (default: '\\n')",
+                                "Separator before new content (default: '\\n')",
                         },
                     },
                     required: ["path", "content"],
@@ -506,24 +414,12 @@ export class MCPTools {
             },
             {
                 name: "update_note",
-                description:
-                    "Update an existing note by replacing its entire content. " +
-                    "Fails if note does not exist.",
+                description: "Replace the entire content of an existing note.",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        path: {
-                            type: "string",
-                            description:
-                                "The path to the note " +
-                                "(e.g., 'folder/note.md')",
-                        },
-                        content: {
-                            type: "string",
-                            description:
-                                "The new content that will replace " +
-                                "the entire file content",
-                        },
+                        path: { type: "string" },
+                        content: { type: "string" },
                     },
                     required: ["path", "content"],
                 },
@@ -536,19 +432,11 @@ export class MCPTools {
             },
             {
                 name: "delete_note",
-                description:
-                    "Delete a note by moving it to the system trash. " +
-                    "This is safer than permanent deletion as the file can " +
-                    "be recovered from trash. Fails if note does not exist.",
+                description: "Move a note to the system trash (recoverable).",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        path: {
-                            type: "string",
-                            description:
-                                "The path to the note to delete " +
-                                "(e.g., 'folder/note.md')",
-                        },
+                        path: { type: "string" },
                     },
                     required: ["path"],
                 },
@@ -561,26 +449,15 @@ export class MCPTools {
             },
             {
                 name: "rename_note",
-                description:
-                    "Rename or move a note to a new path. " +
-                    "Updates all internal vault links that reference " +
-                    "the note. Fails if the note does not exist or " +
-                    "the destination path already exists.",
+                description: "Rename or move a note; updates all vault links.",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        path: {
-                            type: "string",
-                            description:
-                                "Current path to the note " +
-                                "(e.g., 'folder/old-name.md')",
-                        },
+                        path: { type: "string" },
                         new_path: {
                             type: "string",
                             description:
-                                "New path for the note; use a " +
-                                "different folder to move it " +
-                                "(e.g., 'other-folder/new-name.md')",
+                                "New path; use a different folder to move.",
                         },
                     },
                     required: ["path", "new_path"],
@@ -595,10 +472,7 @@ export class MCPTools {
             {
                 name: "get_current_date",
                 description:
-                    "Get the current date and time information. " +
-                    "Returns the current date in ISO format, timestamp, " +
-                    "and formatted date string. Use this to determine " +
-                    "what date to use for periodic notes or date-based operations.",
+                    "Get the current date; use for periodic notes and date-based operations.",
                 inputSchema: {
                     type: "object",
                     properties: {},
@@ -606,32 +480,13 @@ export class MCPTools {
                 outputSchema: {
                     type: "object",
                     properties: {
-                        iso: {
-                            type: "string",
-                            description: "Date in ISO format (YYYY-MM-DD)",
-                        },
-                        formatted: {
-                            type: "string",
-                            description:
-                                "Human-readable date (e.g., 'January 20, 2025')",
-                        },
-                        timestamp: {
-                            type: "number",
-                            description: "Unix timestamp in milliseconds",
-                        },
-                        year: {
-                            type: "number",
-                            description: "Year (e.g., 2025)",
-                        },
-                        month: { type: "number", description: "Month (1-12)" },
-                        day: {
-                            type: "number",
-                            description: "Day of month (1-31)",
-                        },
-                        dayOfWeek: {
-                            type: "string",
-                            description: "Day name (e.g., 'Monday')",
-                        },
+                        iso: { type: "string" },
+                        formatted: { type: "string" },
+                        timestamp: { type: "number" },
+                        year: { type: "number" },
+                        month: { type: "number" },
+                        day: { type: "number" },
+                        dayOfWeek: { type: "string" },
                     },
                     required: [
                         "iso",
@@ -650,11 +505,8 @@ export class MCPTools {
             {
                 name: "get_periodic_note_path",
                 description:
-                    "Get the file path for a periodic note " +
-                    "(daily, weekly, monthly, quarterly, yearly). " +
-                    "Checks for Periodic Notes plugin, falls back to " +
-                    "Daily Notes plugin for 'daily' period. " +
-                    "Returns path based on user's configured format and folder.",
+                    "Get the configured path for a periodic note " +
+                    "(daily/weekly/monthly/quarterly/yearly).",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -667,13 +519,11 @@ export class MCPTools {
                                 "quarterly",
                                 "yearly",
                             ],
-                            description: "The period type for the note",
                         },
                         date: {
                             type: "string",
                             description:
-                                "Optional date in ISO format " +
-                                "(e.g., '2025-01-18'). Defaults to current date.",
+                                "ISO date (e.g., '2025-01-18'); defaults to today.",
                         },
                     },
                     required: ["period"],
@@ -686,10 +536,7 @@ export class MCPTools {
             {
                 name: "list_templates",
                 description:
-                    "List available note templates and Templater " +
-                    "plugin status. " +
-                    "Returns path of templates folder, list of templates, " +
-                    "and whether or not the Templater plugin is enabled.",
+                    "List available templates and Templater plugin status.",
                 inputSchema: {
                     type: "object",
                     properties: {},
@@ -697,21 +544,12 @@ export class MCPTools {
                 outputSchema: {
                     type: "object",
                     properties: {
-                        templates_folder: {
-                            type: "string",
-                            description:
-                                "Path to the templates folder (if Templater enabled)",
-                        },
+                        templates_folder: { type: "string" },
                         templates: {
                             type: "array",
                             items: { type: "string" },
-                            description:
-                                "List of template file paths (if Templater enabled)",
                         },
-                        templater_enabled: {
-                            type: "boolean",
-                            description: "Whether Templater plugin is enabled",
-                        },
+                        templater_enabled: { type: "boolean" },
                     },
                     required: ["templater_enabled"],
                 },
