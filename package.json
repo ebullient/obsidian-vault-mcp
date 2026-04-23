@@ -30,6 +30,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.8",
     "@modelcontextprotocol/inspector": "^0.21.1",
+    "@types/moment": "^2.11.29",
     "@types/node": "^25.0.9",
     "@typescript-eslint/parser": "^8.46.4",
     "auto-changelog": "^2.5.0",
