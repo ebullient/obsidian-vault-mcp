@@ -1,7 +1,6 @@
 import {
     type App,
     getAllTags,
-    type moment,
     normalizePath,
     prepareSimpleSearch,
     type SearchResultContainer,
@@ -19,6 +18,7 @@ import {
     type IGranularity,
 } from "obsidian-daily-notes-interface";
 import type { CurrentSettings, Logger, MCPTool } from "./@types/settings";
+import { momentFn } from "./vaultasmcp-moment";
 import { NoteHandler } from "./vaultasmcp-NoteHandler";
 import { PathACLChecker } from "./vaultasmcp-PathACL";
 import { TemplateHandler } from "./vaultasmcp-TemplateHandler";
@@ -715,7 +715,7 @@ export class MCPTools {
         day: number;
         dayOfWeek: string;
     } {
-        const now = activeWindow.moment();
+        const now = momentFn();
         return {
             iso: now.format("YYYY-MM-DD"),
             formatted: now.format("MMMM D, YYYY"),
@@ -745,9 +745,7 @@ export class MCPTools {
             throw new Error(`Invalid period type: ${period}`);
         }
 
-        const targetDate = date
-            ? activeWindow.moment(date)
-            : activeWindow.moment();
+        const targetDate = date ? momentFn(date) : momentFn();
 
         const settings = this.getPeriodicSettings(period, granularity);
 
@@ -795,7 +793,7 @@ export class MCPTools {
     }
 
     private buildPeriodicPath(
-        date: moment.Moment,
+        date: ReturnType<typeof momentFn>,
         settings: { format?: string; folder?: string },
     ): { path: string } {
         const format = settings.format || "YYYY-MM-DD";
@@ -895,21 +893,21 @@ export class MCPTools {
         }
         if (mtime) {
             const before = mtime.before
-                ? activeWindow.moment(mtime.before).endOf("day")
+                ? momentFn(mtime.before).endOf("day")
                 : undefined;
             const after = mtime.after
-                ? activeWindow.moment(mtime.after).startOf("day")
+                ? momentFn(mtime.after).startOf("day")
                 : undefined;
             files = files.filter((f) => {
                 const cache = this.app.metadataCache.getFileCache(f);
                 const lastModified: unknown = cache?.frontmatter?.last_modified;
-                let date = activeWindow.moment(f.stat.mtime);
+                let date = momentFn(f.stat.mtime);
                 if (
                     typeof lastModified === "string" ||
                     typeof lastModified === "number"
                 ) {
                     // Use frontmatter date (YYYY-MM-DD comparison)
-                    date = activeWindow.moment(lastModified);
+                    date = momentFn(lastModified);
                 }
                 if (before && date.isAfter(before, "day")) {
                     return false;
@@ -1054,12 +1052,12 @@ export class MCPTools {
         const normalizedPath = path ? normalizePath(path) : "";
         const maxResults = Math.min(limit ?? 20, 50);
 
-        let cutoff: ReturnType<typeof activeWindow.moment> | undefined;
+        let cutoff: ReturnType<typeof momentFn> | undefined;
         if (since) {
             const rel = since.match(/^(\d+)d$/i);
             cutoff = rel
-                ? activeWindow.moment().subtract(Number(rel[1]), "days")
-                : activeWindow.moment(since).startOf("day");
+                ? momentFn().subtract(Number(rel[1]), "days")
+                : momentFn(since).startOf("day");
             if (!cutoff.isValid()) {
                 throw new Error(
                     `Invalid 'since' value: '${since}'. ` +
@@ -1079,7 +1077,7 @@ export class MCPTools {
             ) {
                 return false;
             }
-            if (cutoff && activeWindow.moment(f.stat.mtime).isBefore(cutoff)) {
+            if (cutoff && momentFn(f.stat.mtime).isBefore(cutoff)) {
                 return false;
             }
             return true;
