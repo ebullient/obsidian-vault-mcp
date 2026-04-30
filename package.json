@@ -1,6 +1,6 @@
 {
   "name": "obsidian-vault-mcp",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "MCP server connecting Open WebUI, Claude Desktop, and other LLMs to your vault.",
   "main": "main.js",
   "scripts": {
