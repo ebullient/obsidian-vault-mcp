@@ -17,15 +17,17 @@ An Obsidian plugin that runs an MCP (Model Context Protocol) server, enabling ex
 - **Configurable Settings**: Adjust server port, auto-start behavior, and log level
 - **CORS Support**: Enables access from remote machines via Tailscale or local network
 - **MCP Tools**:
-    - `read_note` - Read the full content of a note by path
-    - `search_notes` - Search notes by tag, folder, or text content
-    - `get_linked_notes` - Get all notes linked from a specific note
-    - `list_notes_by_tag` - Get all notes with specific tag(s)
-    - `read_note_with_embeds` - Read note with embedded content expanded
+    - `read_note` - Read note content by path; optionally expand embedded content
+    - `read_multiple_notes` - Read multiple notes in a single request
+    - `search_notes` - Find notes by folder, tag(s), frontmatter, text, or recency
+    - `get_linked_notes` - Get outgoing links from a note
+    - `list_notes` - List notes and subfolders in a directory
     - `create_note` - Create notes from templates or with direct content
     - `append_to_note` - Append content to an existing note
     - `update_note` - Update an existing note by replacing its entire content
     - `delete_note` - Delete a note (moves to system trash)
+    - `rename_note` - Rename or move a note, updating all vault links
+    - `get_current_date` - Get the current date for date-based operations
     - `get_periodic_note_path` - Get path for periodic notes (daily/weekly/monthly/quarterly/yearly)
     - `list_templates` - List available templates and templating plugins
 
@@ -187,13 +189,18 @@ Claude Desktop uses stdio transport for MCP servers, so you'll need the
 
 ### read_note
 
-Read the full content of a note by its path.
+Read note content by path. Returns raw markdown by default. Pass `includeEmbeds: true` only
+when embedded content was explicitly requested — embed expansion is expensive.
 
 **Parameters:**
 
 - `path` (string, required): Path to the note (e.g., `"folder/note.md"`)
+- `sections` (string[], optional): Return only these sections by heading text (case-insensitive, includes subheadings)
+- `includeEmbeds` (boolean, optional): Expand `![[embed]]` blocks inline (up to 2 levels deep). Default: `false`
+- `includeLinks` (boolean, optional): Also expand regular `[[links]]` inline. Only relevant when `includeEmbeds` is `true`. Default: `false`
+- `excludePatterns` (string[], optional): Regex patterns to skip certain embeds. Only relevant when `includeEmbeds` is `true`
 
-**Example:**
+**Example (plain read):**
 
 ```json
 {
@@ -204,24 +211,67 @@ Read the full content of a note by its path.
 }
 ```
 
+**Example (with embedded content expanded):**
+
+```json
+{
+  "name": "read_note",
+  "arguments": {
+    "path": "Projects/overview.md",
+    "includeEmbeds": true
+  }
+}
+```
+
 ### search_notes
 
-Search for notes by tag, folder path, or text content.
+Find notes across the vault by folder, tag(s), frontmatter, modification time, or text content.
+All parameters are optional and combine with AND logic, except `tags[]` which is OR within
+the tag dimension. Use `list_notes` when folder structure (subfolder names) matters.
 
 **Parameters:**
 
-- `tag` (string, optional): Tag to search for without # (e.g., `"daily"`)
-- `folder` (string, optional): Folder path to search within
-- `text` (string, optional): Text to search for in note content
+- `folder` (string, optional): Restrict to notes under this folder path (recursive)
+- `tag` (string, optional): Single tag filter, combined with AND logic alongside other params
+- `tags` (string[], optional): Return notes that have ANY of these tags (OR logic); cannot be combined with `tag`
+- `text` (string, optional): Words must all appear (any order); quote phrases: `meeting "action items"`
+- `mtime` (object, optional): Filter by modification time — `before` and/or `after`; each accepts an ISO date (`"2026-04-25"`) or relative days (`"7d"` = 7 days ago)
+- `frontmatter` (object, optional): Filter by frontmatter key/value, e.g. `{"type": "quest"}`
+- `sort` (string, optional): `"alpha"` (default) or `"recent"` (newest modified first)
+- `limit` (number, optional): Max results; only applied when `sort` is `"recent"` (default: 20, max: 50)
 
-**Example:**
+**Example (tag + folder AND filter):**
 
 ```json
 {
   "name": "search_notes",
   "arguments": {
     "tag": "project",
-    "folder": "Work"
+    "folder": "quests"
+  }
+}
+```
+
+**Example (OR across multiple tags):**
+
+```json
+{
+  "name": "search_notes",
+  "arguments": {
+    "tags": ["tech/ai", "tech/mcp"]
+  }
+}
+```
+
+**Example (recently modified):**
+
+```json
+{
+  "name": "search_notes",
+  "arguments": {
+    "folder": "chronicles",
+    "sort": "recent",
+    "limit": 10
   }
 }
 ```
@@ -241,25 +291,6 @@ Get all notes linked from a specific note (outgoing links).
   "name": "get_linked_notes",
   "arguments": {
     "path": "Projects/Main.md"
-  }
-}
-```
-
-### list_notes_by_tag
-
-Get all notes that have specific tag(s).
-
-**Parameters:**
-
-- `tags` (string[], required): Array of tags to search for without #
-
-**Example:**
-
-```json
-{
-  "name": "list_notes_by_tag",
-  "arguments": {
-    "tags": ["todo", "urgent"]
   }
 }
 ```

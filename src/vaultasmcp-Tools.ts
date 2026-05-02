@@ -91,8 +91,10 @@ export class MCPTools {
             {
                 name: "read_note",
                 description:
-                    "Read note content by path. Returns raw markdown; " +
-                    "optionally filtered to named sections.",
+                    "Read note content by path. Returns raw markdown by default; " +
+                    "optionally filtered to named sections. " +
+                    "Pass includeEmbeds: true only when embedded content was " +
+                    "explicitly requested — embed expansion is expensive.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -107,6 +109,28 @@ export class MCPTools {
                             description:
                                 "Return only these sections by heading text " +
                                 "(case-insensitive, includes subheadings).",
+                        },
+                        includeEmbeds: {
+                            type: "boolean",
+                            description:
+                                "Expand ![[embed]] blocks inline " +
+                                "(up to 2 levels deep, no circular refs). " +
+                                "Default: false.",
+                        },
+                        includeLinks: {
+                            type: "boolean",
+                            description:
+                                "Also expand regular [[links]] inline. " +
+                                "Only relevant when includeEmbeds is true. " +
+                                "Default: false.",
+                        },
+                        excludePatterns: {
+                            type: "array",
+                            items: { type: "string" },
+                            description:
+                                "Regex patterns to skip certain embeds; " +
+                                "matched against '[display](link)'. " +
+                                "Only relevant when includeEmbeds is true.",
                         },
                     },
                     required: ["path"],
@@ -155,18 +179,36 @@ export class MCPTools {
             {
                 name: "search_notes",
                 description:
-                    "Search notes by folder, tag, frontmatter, mtime, or text. " +
-                    "Multiple parameters narrow results (AND logic).",
+                    "Find notes across the vault by folder, tag, frontmatter, " +
+                    "modification time, or text content. " +
+                    "All parameters are optional and combine with AND logic, " +
+                    "except tags[] which is OR within the tag dimension. " +
+                    "Returns note paths only — not folder structure; " +
+                    "use list_notes to browse directories. " +
+                    "Use sort: 'recent' with limit to find recently changed notes.",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        tag: {
-                            type: "string",
-                            description: "Tag without # (e.g., 'project/work')",
-                        },
                         folder: {
                             type: "string",
-                            description: "Folder path to search within",
+                            description:
+                                "Restrict to notes under this folder path " +
+                                "(recursive).",
+                        },
+                        tag: {
+                            type: "string",
+                            description:
+                                "Single tag filter, combined with AND logic " +
+                                "alongside other params (e.g., 'project/work'). " +
+                                "Use tags[] for OR matching across multiple tags.",
+                        },
+                        tags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description:
+                                "Return notes that have ANY of these tags (OR logic). " +
+                                "Tags without #. " +
+                                "Cannot be combined with tag.",
                         },
                         text: {
                             type: "string",
@@ -177,17 +219,21 @@ export class MCPTools {
                         mtime: {
                             type: "object",
                             description:
-                                "Filter by modification time (ISO dates).",
+                                "Filter by modification time. " +
+                                "Each value is an ISO date ('2026-04-25') " +
+                                "or relative days ('7d' = 7 days ago).",
                             properties: {
                                 before: {
                                     type: "string",
                                     description:
-                                        "On or before this date (inclusive)",
+                                        "On or before this date (inclusive). " +
+                                        "ISO date or relative (e.g., '7d').",
                                 },
                                 after: {
                                     type: "string",
                                     description:
-                                        "On or after this date (inclusive)",
+                                        "On or after this date (inclusive). " +
+                                        "ISO date or relative (e.g., '7d').",
                                 },
                             },
                         },
@@ -198,6 +244,21 @@ export class MCPTools {
                                 'E.g., {"status": "active"}',
                             additionalProperties: { type: "string" },
                         },
+                        sort: {
+                            type: "string",
+                            enum: ["alpha", "recent"],
+                            description:
+                                "Sort order: 'alpha' (default, alphabetical) or " +
+                                "'recent' (newest modified first). " +
+                                "Use 'recent' with limit to get recently changed notes.",
+                        },
+                        limit: {
+                            type: "number",
+                            description:
+                                "Max notes to return. " +
+                                "Only applied when sort is 'recent' " +
+                                "(default: 20, max: 50).",
+                        },
                     },
                 },
                 outputSchema: notesListSchema,
@@ -207,7 +268,9 @@ export class MCPTools {
             },
             {
                 name: "get_linked_notes",
-                description: "Get outgoing links from a note.",
+                description:
+                    "Get outgoing links from a note. " +
+                    "Returns links and embeds; does not return backlinks.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -223,7 +286,10 @@ export class MCPTools {
             {
                 name: "list_notes",
                 description:
-                    "List immediate notes and folders in a directory (non-recursive).",
+                    "List notes and subfolders in a directory (non-recursive). " +
+                    "Use for vault navigation when folder structure matters. " +
+                    "Use search_notes with a folder parameter to find notes " +
+                    "recursively without folder structure.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -249,95 +315,6 @@ export class MCPTools {
                     },
                     required: ["notes", "folders"],
                 },
-                annotations: {
-                    readOnlyHint: true,
-                },
-            },
-            {
-                name: "list_recent_notes",
-                description:
-                    "List recently modified notes, newest first, " +
-                    "recursively under a path prefix.",
-                inputSchema: {
-                    type: "object",
-                    properties: {
-                        path: {
-                            type: "string",
-                            description:
-                                "Path prefix to search under; " +
-                                "omit for entire vault.",
-                        },
-                        since: {
-                            type: "string",
-                            description:
-                                "Relative ('7d') or ISO date ('2025-01-01').",
-                        },
-                        limit: {
-                            type: "number",
-                            description:
-                                "Max notes to return (default: 20, max: 50).",
-                        },
-                    },
-                },
-                outputSchema: {
-                    type: "object",
-                    properties: {
-                        notes: {
-                            type: "array",
-                            items: { type: "string" },
-                        },
-                    },
-                    required: ["notes"],
-                },
-                annotations: {
-                    readOnlyHint: true,
-                },
-            },
-            {
-                name: "list_notes_by_tag",
-                description:
-                    "Return note paths matching any of the given tags.",
-                inputSchema: {
-                    type: "object",
-                    properties: {
-                        tags: {
-                            type: "array",
-                            items: { type: "string" },
-                            description: "Tags without #",
-                        },
-                    },
-                    required: ["tags"],
-                },
-                outputSchema: notesListSchema,
-                annotations: {
-                    readOnlyHint: true,
-                },
-            },
-            {
-                name: "read_note_with_embeds",
-                description:
-                    "Read a note with embedded content expanded inline " +
-                    "(up to 2 levels deep, no circular refs).",
-                inputSchema: {
-                    type: "object",
-                    properties: {
-                        path: { type: "string" },
-                        includeLinks: {
-                            type: "boolean",
-                            description:
-                                "Also expand regular links (default: false)",
-                        },
-                        excludePatterns: {
-                            type: "array",
-                            items: { type: "string" },
-                            description:
-                                "Regex patterns to exclude; " +
-                                "matched against '[display](link)'",
-                        },
-                    },
-                    required: ["path"],
-                },
-                outputSchema: contentSchema,
                 annotations: {
                     readOnlyHint: true,
                 },
@@ -414,7 +391,9 @@ export class MCPTools {
             },
             {
                 name: "update_note",
-                description: "Replace the entire content of an existing note.",
+                description:
+                    "Replace the entire content of an existing note. " +
+                    "Use append_to_note for additive changes to avoid data loss.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -566,6 +545,13 @@ export class MCPTools {
     ): Promise<unknown> {
         switch (toolName) {
             case "read_note":
+                if (args.includeEmbeds) {
+                    return await this.noteHandler.readNoteWithEmbeds(
+                        args.path as string,
+                        args.excludePatterns as string[] | undefined,
+                        args.includeLinks as boolean | undefined,
+                    );
+                }
                 return await this.readNote(
                     args.path as string,
                     args.sections as string[] | undefined,
@@ -581,25 +567,14 @@ export class MCPTools {
                         | { before?: string; after?: string }
                         | undefined,
                     args.frontmatter as Record<string, string> | undefined,
+                    args.tags as string[] | undefined,
+                    args.sort as "alpha" | "recent" | undefined,
+                    args.limit as number | undefined,
                 );
             case "get_linked_notes":
                 return this.getLinkedNotes(args.path as string);
             case "list_notes":
                 return this.listNotes(args.path as string);
-            case "list_recent_notes":
-                return this.listRecentNotes(
-                    args.path as string | undefined,
-                    args.since as string | undefined,
-                    args.limit as number | undefined,
-                );
-            case "list_notes_by_tag":
-                return this.listNotesByTag(args.tags as string[]);
-            case "read_note_with_embeds":
-                return await this.noteHandler.readNoteWithEmbeds(
-                    args.path as string,
-                    args.excludePatterns as string[] | undefined,
-                    args.includeLinks as boolean | undefined,
-                );
             case "create_note":
                 return await this.createNote(
                     args.path as string,
@@ -848,6 +823,9 @@ export class MCPTools {
         text?: string,
         mtime?: { before?: string; after?: string },
         frontmatter?: Record<string, string>,
+        tags?: string[],
+        sort?: "alpha" | "recent",
+        limit?: number,
     ): Promise<{ notes: string[] }> {
         let files = this.filterAccessibleFiles(
             this.app.vault.getMarkdownFiles(),
@@ -893,29 +871,27 @@ export class MCPTools {
         }
         if (mtime) {
             const before = mtime.before
-                ? momentFn(mtime.before).endOf("day")
+                ? this.parseDateParam(mtime.before).endOf("day")
                 : undefined;
             const after = mtime.after
-                ? momentFn(mtime.after).startOf("day")
+                ? this.parseDateParam(mtime.after).startOf("day")
                 : undefined;
             files = files.filter((f) => {
-                const cache = this.app.metadataCache.getFileCache(f);
-                const lastModified: unknown = cache?.frontmatter?.last_modified;
-                let date = momentFn(f.stat.mtime);
-                if (
-                    typeof lastModified === "string" ||
-                    typeof lastModified === "number"
-                ) {
-                    // Use frontmatter date (YYYY-MM-DD comparison)
-                    date = momentFn(lastModified);
-                }
-                if (before && date.isAfter(before, "day")) {
-                    return false;
-                }
-                if (after && date.isBefore(after, "day")) {
-                    return false;
-                }
+                const date = this.getEffectiveMtime(f);
+                if (before && date.isAfter(before, "day")) return false;
+                if (after && date.isBefore(after, "day")) return false;
                 return true;
+            });
+        }
+        if (tags && tags.length > 0) {
+            const normalizedTags = tags.map((t) => this.normalizeTag(t));
+            files = files.filter((f) => {
+                const cache = this.app.metadataCache.getFileCache(f);
+                if (!cache) return false;
+                const allTags = (getAllTags(cache) || []).map((t) =>
+                    this.normalizeTag(t),
+                );
+                return normalizedTags.some((tag) => allTags.includes(tag));
             });
         }
         if (text) {
@@ -941,6 +917,16 @@ export class MCPTools {
             files = scored.map((r) => r.file);
         }
 
+        if (sort === "recent") {
+            const maxResults = Math.min(limit ?? 20, 50);
+            files.sort((a, b) => {
+                const diff =
+                    this.getEffectiveMtime(b).valueOf() -
+                    this.getEffectiveMtime(a).valueOf();
+                return diff !== 0 ? diff : b.stat.mtime - a.stat.mtime;
+            });
+            return { notes: files.slice(0, maxResults).map((f) => f.path) };
+        }
         return {
             notes: text
                 ? files.map((f) => f.path)
@@ -1044,75 +1030,6 @@ export class MCPTools {
         };
     }
 
-    private listRecentNotes(
-        path?: string,
-        since?: string,
-        limit?: number,
-    ): { notes: string[] } {
-        const normalizedPath = path ? normalizePath(path) : "";
-        const maxResults = Math.min(limit ?? 20, 50);
-
-        let cutoff: ReturnType<typeof momentFn> | undefined;
-        if (since) {
-            const rel = since.match(/^(\d+)d$/i);
-            cutoff = rel
-                ? momentFn().subtract(Number(rel[1]), "days")
-                : momentFn(since).startOf("day");
-            if (!cutoff.isValid()) {
-                throw new Error(
-                    `Invalid 'since' value: '${since}'. ` +
-                        "Use a relative duration (e.g., '7d') " +
-                        "or ISO date (e.g., '2025-01-01').",
-                );
-            }
-        }
-
-        const files = this.filterAccessibleFiles(
-            this.app.vault.getMarkdownFiles(),
-        ).filter((f) => {
-            if (
-                normalizedPath &&
-                f.path !== normalizedPath &&
-                !f.path.startsWith(`${normalizedPath}/`)
-            ) {
-                return false;
-            }
-            if (cutoff && momentFn(f.stat.mtime).isBefore(cutoff)) {
-                return false;
-            }
-            return true;
-        });
-
-        files.sort((a, b) => b.stat.mtime - a.stat.mtime);
-
-        return {
-            notes: files.slice(0, maxResults).map((f) => f.path),
-        };
-    }
-
-    private listNotesByTag(tags: string[]): { notes: string[] } {
-        const normalizedTags = tags.map((t) => this.normalizeTag(t));
-
-        // Filter by ACL first, then process metadata
-        const matchingFiles = this.filterAccessibleFiles(
-            this.app.vault.getMarkdownFiles(),
-        ).filter((f) => {
-            const cache = this.app.metadataCache.getFileCache(f);
-            if (!cache) {
-                return false;
-            }
-            const allTags = (getAllTags(cache) || []).map((t) =>
-                this.normalizeTag(t),
-            );
-
-            return normalizedTags.some((tag) => allTags.includes(tag));
-        });
-
-        return {
-            notes: matchingFiles.map((f) => f.path).sort(),
-        };
-    }
-
     private normalizeTag(tag: string): string {
         return tag.startsWith("#") ? tag.substring(1) : tag;
     }
@@ -1123,6 +1040,22 @@ export class MCPTools {
      * e.g. `meeting "action items"` →
      *   phrases: ["action items"], words: "meeting"
      */
+    private getEffectiveMtime(file: TFile): ReturnType<typeof momentFn> {
+        const cache = this.app.metadataCache.getFileCache(file);
+        const lm: unknown = cache?.frontmatter?.last_modified;
+        if (typeof lm === "string" || typeof lm === "number") {
+            return momentFn(lm);
+        }
+        return momentFn(file.stat.mtime);
+    }
+
+    private parseDateParam(value: string): ReturnType<typeof momentFn> {
+        const rel = value.match(/^(\d+)d$/i);
+        return rel
+            ? momentFn().subtract(Number(rel[1]), "days")
+            : momentFn(value);
+    }
+
     private parseTextQuery(query: string): {
         phrases: string[];
         words: string;
