@@ -7,7 +7,8 @@ import obsidianmd from "eslint-plugin-obsidianmd";
 export default defineConfig([
     ...obsidianmd.configs.recommended,
     globalIgnores([
-        "tests/",
+        "test/",
+        "vitest.config.ts",
         "package.json",
         "*.mjs",
     ]),

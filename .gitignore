@@ -22,4 +22,5 @@ data.json
 .env
 
 .claude/settings.local.json
+.claude/worktrees
 skill-creator
