@@ -28,7 +28,7 @@ An Obsidian plugin that runs an MCP (Model Context Protocol) server, enabling ex
     - `delete_note` - Delete a note (moves to system trash)
     - `rename_note` - Rename or move a note, updating all vault links
     - `get_current_date` - Get the current date for date-based operations
-    - `get_periodic_note_path` - Get path for periodic notes (daily/weekly/monthly/quarterly/yearly)
+    - `read_periodic_note` - Get path and content (if it exists) for periodic notes (daily/weekly/monthly/quarterly/yearly)
     - `list_templates` - List available templates and templating plugins
 
 ## Installation
@@ -465,20 +465,22 @@ Delete a note by moving it to the system trash. This is safer than permanent del
 - File can be recovered from trash if deleted by mistake
 - Returns the path of the deleted note
 
-### get_periodic_note_path
+### read_periodic_note
 
-Get the file path for a periodic note based on configured settings. Supports daily, weekly, monthly, quarterly, and yearly notes. Checks for the Periodic Notes plugin first, then falls back to the core Daily Notes plugin for daily notes.
+Get the file path for a periodic note based on configured settings, and return its content if the file exists. Supports daily, weekly, monthly, quarterly, and yearly notes. Checks for the Periodic Notes plugin first, then falls back to the core Daily Notes plugin for daily notes.
 
 **Parameters:**
 
 - `period` (string, required): The period type - one of: `"daily"`, `"weekly"`, `"monthly"`, `"quarterly"`, `"yearly"`
 - `date` (string, optional): Date in ISO format (e.g., `"2025-01-18"`). Defaults to current date.
 
+**Returns:** `path` always; `content` only if the note file exists.
+
 **Example (daily note):**
 
 ```json
 {
-  "name": "get_periodic_note_path",
+  "name": "read_periodic_note",
   "arguments": {
     "period": "daily",
     "date": "2025-01-18"
@@ -490,7 +492,7 @@ Get the file path for a periodic note based on configured settings. Supports dai
 
 ```json
 {
-  "name": "get_periodic_note_path",
+  "name": "read_periodic_note",
   "arguments": {
     "period": "weekly"
   }
@@ -501,7 +503,7 @@ Get the file path for a periodic note based on configured settings. Supports dai
 
 ```json
 {
-  "name": "get_periodic_note_path",
+  "name": "read_periodic_note",
   "arguments": {
     "period": "monthly",
     "date": "2025-01-01"
@@ -516,7 +518,7 @@ Get the file path for a periodic note based on configured settings. Supports dai
 - Returns path based on user's configured format and folder settings in their plugin
 - Fails if the required plugin is not installed or the period type is not enabled
 - Path format depends on user's settings (e.g., `"Daily Notes/2025-01-18.md"` or `"Weekly/2025-W03.md"`)
-- The note file itself may or may not exist yet - this tool only returns the configured path
+- If the note file does not yet exist, only `path` is returned (no `content` field)
 
 ### list_templates
 

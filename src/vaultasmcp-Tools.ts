@@ -92,9 +92,7 @@ export class MCPTools {
                 name: "read_note",
                 description:
                     "Read note content by path. Returns raw markdown by default; " +
-                    "optionally filtered to named sections. " +
-                    "Pass includeEmbeds: true only when embedded content was " +
-                    "explicitly requested — embed expansion is expensive.",
+                    "optionally filtered to named sections.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -114,23 +112,24 @@ export class MCPTools {
                             type: "boolean",
                             description:
                                 "Expand ![[embed]] blocks inline " +
-                                "(up to 2 levels deep, no circular refs). " +
+                                "(up to 2 levels deep, no circular refs); " +
+                                "expensive — use only when embeds are needed. " +
                                 "Default: false.",
                         },
                         includeLinks: {
                             type: "boolean",
                             description:
+                                "Ignored unless includeEmbeds is true. " +
                                 "Also expand regular [[links]] inline. " +
-                                "Only relevant when includeEmbeds is true. " +
                                 "Default: false.",
                         },
                         excludePatterns: {
                             type: "array",
                             items: { type: "string" },
                             description:
+                                "Ignored unless includeEmbeds is true. " +
                                 "Regex patterns to skip certain embeds; " +
-                                "matched against '[display](link)'. " +
-                                "Only relevant when includeEmbeds is true.",
+                                "matched against '[display](link)'.",
                         },
                     },
                     required: ["path"],
@@ -184,8 +183,7 @@ export class MCPTools {
                     "All parameters are optional and combine with AND logic, " +
                     "except tags[] which is OR within the tag dimension. " +
                     "Returns note paths only — not folder structure; " +
-                    "use list_notes to browse directories. " +
-                    "Use sort: 'recent' with limit to find recently changed notes.",
+                    "use list_notes to browse directories.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -323,7 +321,10 @@ export class MCPTools {
                 name: "create_note",
                 description:
                     "Create a note or binary file; creates parent folders as needed. " +
-                    "Fails if file already exists.",
+                    "Fails if the file already exists. " +
+                    "Without a template, content is required. " +
+                    "With a template, Templater must be installed; " +
+                    "content is optional and appended after the rendered template.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -362,7 +363,8 @@ export class MCPTools {
                 name: "append_to_note",
                 description:
                     "Append content to an existing note, " +
-                    "at end of file or after a heading.",
+                    "at end of file or after a heading. " +
+                    "Use update_note instead when replacing an existing section.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -411,7 +413,9 @@ export class MCPTools {
             },
             {
                 name: "delete_note",
-                description: "Move a note to the system trash (recoverable).",
+                description:
+                    "Move a note to the system trash (recoverable). " +
+                    "If the goal is to rename or move, use rename_note instead to preserve vault links.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -428,7 +432,11 @@ export class MCPTools {
             },
             {
                 name: "rename_note",
-                description: "Rename or move a note; updates all vault links.",
+                description:
+                    "Rename or move a note; prefer this over delete+create " +
+                    "because it automatically rewrites all [[wikilinks]] and " +
+                    "markdown links in the vault that pointed to the old path. " +
+                    "delete+create leaves those links broken.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -449,43 +457,11 @@ export class MCPTools {
                 },
             },
             {
-                name: "get_current_date",
+                name: "read_periodic_note",
                 description:
-                    "Get the current date; use for periodic notes and date-based operations.",
-                inputSchema: {
-                    type: "object",
-                    properties: {},
-                },
-                outputSchema: {
-                    type: "object",
-                    properties: {
-                        iso: { type: "string" },
-                        formatted: { type: "string" },
-                        timestamp: { type: "number" },
-                        year: { type: "number" },
-                        month: { type: "number" },
-                        day: { type: "number" },
-                        dayOfWeek: { type: "string" },
-                    },
-                    required: [
-                        "iso",
-                        "formatted",
-                        "timestamp",
-                        "year",
-                        "month",
-                        "day",
-                        "dayOfWeek",
-                    ],
-                },
-                annotations: {
-                    readOnlyHint: true,
-                },
-            },
-            {
-                name: "get_periodic_note_path",
-                description:
-                    "Get the configured path for a periodic note " +
-                    "(daily/weekly/monthly/quarterly/yearly).",
+                    "Read a periodic note (daily/weekly/monthly/quarterly/yearly). " +
+                    "Always returns the resolved path; content is included when the note exists. " +
+                    "If content is absent, pass the path to create_note.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -507,7 +483,14 @@ export class MCPTools {
                     },
                     required: ["period"],
                 },
-                outputSchema: pathSchema,
+                outputSchema: {
+                    type: "object" as const,
+                    properties: {
+                        path: { type: "string" },
+                        content: { type: "string" },
+                    },
+                    required: ["path"],
+                },
                 annotations: {
                     readOnlyHint: true,
                 },
@@ -515,7 +498,10 @@ export class MCPTools {
             {
                 name: "list_templates",
                 description:
-                    "List available templates and Templater plugin status.",
+                    "List available Templater templates; call before create_note " +
+                    "to discover valid template paths. " +
+                    "Returns templater_enabled: false when Templater is not installed; " +
+                    "templates and templates_folder are only present when it is enabled.",
                 inputSchema: {
                     type: "object",
                     properties: {},
@@ -601,10 +587,8 @@ export class MCPTools {
                     args.path as string,
                     args.new_path as string,
                 );
-            case "get_current_date":
-                return this.getCurrentDate();
-            case "get_periodic_note_path":
-                return this.getPeriodicNotePath(
+            case "read_periodic_note":
+                return await this.readPeriodicNote(
                     args.period as string,
                     args.date as string | undefined,
                 );
@@ -681,32 +665,10 @@ export class MCPTools {
         return await this.noteHandler.deleteNote(path);
     }
 
-    private getCurrentDate(): {
-        iso: string;
-        formatted: string;
-        timestamp: number;
-        year: number;
-        month: number;
-        day: number;
-        dayOfWeek: string;
-    } {
-        const now = momentFn();
-        return {
-            iso: now.format("YYYY-MM-DD"),
-            formatted: now.format("MMMM D, YYYY"),
-            timestamp: now.valueOf(),
-            year: now.year(),
-            month: now.month() + 1, // moment months are 0-indexed
-            day: now.date(),
-            dayOfWeek: now.format("dddd"),
-        };
-    }
-
-    private getPeriodicNotePath(
+    private async readPeriodicNote(
         period: string,
         date?: string,
-    ): { path: string } {
-        // Map period names to granularity
+    ): Promise<{ path: string; content?: string }> {
         const periodToGranularity: Record<string, IGranularity> = {
             daily: "day",
             weekly: "week",
@@ -721,10 +683,16 @@ export class MCPTools {
         }
 
         const targetDate = date ? momentFn(date) : momentFn();
-
         const settings = this.getPeriodicSettings(period, granularity);
+        const { path } = this.buildPeriodicPath(targetDate, settings);
 
-        return this.buildPeriodicPath(targetDate, settings);
+        const file = this.app.vault.getFileByPath(path);
+        if (!file) {
+            return { path };
+        }
+
+        const { content } = await this.noteHandler.readNote(path);
+        return { path, content };
     }
 
     private getPeriodicSettings(
