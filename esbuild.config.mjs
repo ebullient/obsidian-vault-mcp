@@ -44,7 +44,7 @@ const bridgeParams = {
     banner: {
         js: '#!/usr/bin/env node\n' + banner,
     },
-    entryPoints: ['src/mcp-bridge.ts'],
+    entryPoints: ['bridge-src/mcp-bridge.ts'],
     bundle: true,
     platform: 'node',
     external: [...builtins],

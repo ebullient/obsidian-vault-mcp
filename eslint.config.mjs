@@ -13,6 +13,22 @@ export default defineConfig([
         "*.mjs",
     ]),
     {
+        files: ["bridge-src/**/*.ts"],
+        languageOptions: {
+            parser: tsparser,
+            parserOptions: {
+                project: "./tsconfig.bridge.json"
+            },
+            globals: {
+                ...globals.node,
+            },
+        },
+        rules: {
+            "obsidianmd/prefer-active-window-timers": "off",
+            "obsidianmd/no-nodejs-modules": "off",
+        },
+    },
+    {
         files: ["src/**/*.ts"],
         languageOptions: {
             parser: tsparser,

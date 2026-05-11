@@ -2,8 +2,9 @@
   "compilerOptions": {
     "inlineSourceMap": true,
     "inlineSources": true,
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
     "target": "ES2022",
     "allowJs": true,
     "noImplicitAny": true,
@@ -16,6 +17,7 @@
     ]
   },
   "include": [
-    "src/**/*.ts"
+    "src/**/*.ts",
+    "bridge-src/**/*.ts"
   ]
 }
