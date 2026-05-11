@@ -212,7 +212,7 @@ export class VaultAsMCPPlugin
     }
 
     warn(message: string, ...params: unknown[]): void {
-        console.warn("(VMCP)", message, ...params);
+        console.debug("(VMCP ⚠️)", message, ...params);
     }
 
     error(error: unknown, message = "", ...params: unknown[]): string {

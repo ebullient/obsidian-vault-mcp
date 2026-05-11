@@ -14,7 +14,14 @@ import {
     appHasQuarterlyNotesPluginLoaded,
     appHasWeeklyNotesPluginLoaded,
     appHasYearlyNotesPluginLoaded,
+    createDailyNote,
+    createMonthlyNote,
+    createQuarterlyNote,
+    createWeeklyNote,
+    createYearlyNote,
+    getAllWeeklyNotes,
     getPeriodicNoteSettings,
+    getWeeklyNote,
     type IGranularity,
 } from "obsidian-daily-notes-interface";
 import type { CurrentSettings, Logger, MCPTool } from "./@types/settings";
@@ -461,7 +468,8 @@ export class MCPTools {
                 description:
                     "Read a periodic note (daily/weekly/monthly/quarterly/yearly). " +
                     "Always returns the resolved path; content is included when the note exists. " +
-                    "If content is absent, pass the path to create_note.",
+                    "If content is absent and create is true, the note is created using the " +
+                    "configured template and returned with content.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -480,6 +488,11 @@ export class MCPTools {
                             description:
                                 "ISO date (e.g., '2025-01-18'); defaults to today.",
                         },
+                        create: {
+                            type: "boolean",
+                            description:
+                                "Create the note if it does not exist; defaults to false.",
+                        },
                     },
                     required: ["period"],
                 },
@@ -492,7 +505,9 @@ export class MCPTools {
                     required: ["path"],
                 },
                 annotations: {
-                    readOnlyHint: true,
+                    readOnlyHint: false,
+                    idempotentHint: false,
+                    destructiveHint: false,
                 },
             },
             {
@@ -591,6 +606,7 @@ export class MCPTools {
                 return await this.readPeriodicNote(
                     args.period as string,
                     args.date as string | undefined,
+                    args.create as boolean | undefined,
                 );
             case "list_templates":
                 return this.templateHandler.listTemplates();
@@ -668,6 +684,7 @@ export class MCPTools {
     private async readPeriodicNote(
         period: string,
         date?: string,
+        create?: boolean,
     ): Promise<{ path: string; content?: string }> {
         const periodToGranularity: Record<string, IGranularity> = {
             daily: "day",
@@ -682,17 +699,50 @@ export class MCPTools {
             throw new Error(`Invalid period type: ${period}`);
         }
 
-        const targetDate = date ? momentFn(date) : momentFn();
-        const settings = this.getPeriodicSettings(period, granularity);
-        const { path } = this.buildPeriodicPath(targetDate, settings);
+        const createNote: Record<
+            IGranularity,
+            (d: ReturnType<typeof momentFn>) => Promise<TFile>
+        > = {
+            day: createDailyNote,
+            week: createWeeklyNote,
+            month: createMonthlyNote,
+            quarter: createQuarterlyNote,
+            year: createYearlyNote,
+        };
 
-        const file = this.app.vault.getFileByPath(path);
-        if (!file) {
-            return { path };
+        const settings = this.getPeriodicSettings(period, granularity);
+        if (granularity === "week") {
+            const targetDate = date ? momentFn(date) : momentFn();
+            let file = getWeeklyNote(targetDate, getAllWeeklyNotes());
+            if (!file) {
+                if (!create) {
+                    const { path } = this.buildPeriodicPath(
+                        targetDate,
+                        settings,
+                    );
+                    return { path };
+                }
+                file = await createNote[granularity](targetDate);
+            }
+            const { content } = await this.noteHandler.readNote(file.path);
+            return { path: file.path, content };
         }
 
-        const { content } = await this.noteHandler.readNote(path);
-        return { path, content };
+        const targetDate = (date ? momentFn(date) : momentFn()).startOf(
+            granularity,
+        );
+        const { path } = this.buildPeriodicPath(targetDate, settings);
+
+        let file = this.app.vault.getFileByPath(path);
+        if (!file) {
+            if (!create) {
+                return { path };
+            }
+            file = await createNote[granularity](targetDate);
+        }
+
+        const { content } = await this.noteHandler.readNote(file.path);
+        return { path: file.path, content };
     }
 
     private getPeriodicSettings(
