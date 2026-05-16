@@ -48,6 +48,7 @@ function log(level: string, ...args: unknown[]): void {
 
 // Sleep helper
 function sleep(ms: number): Promise<void> {
+    // eslint-disable-next-line obsidianmd/prefer-window-timers -- Node process; does not run in window
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -55,9 +56,10 @@ function sleep(ms: number): Promise<void> {
 async function checkHealth(): Promise<boolean> {
     try {
         const controller = new AbortController();
+        // eslint-disable-next-line obsidianmd/prefer-window-timers -- Node process; does not run in window
         const timeoutId = setTimeout(() => controller.abort(), 5000); // Short timeout for health check
 
-        // eslint-disable-next-line no-restricted-globals
+        // eslint-disable-next-line no-restricted-globals -- Node process; global fetch is correct here
         const response = await fetch(MCP_URL, {
             method: "POST",
             headers: {
@@ -74,6 +76,7 @@ async function checkHealth(): Promise<boolean> {
             signal: controller.signal,
         });
 
+        // eslint-disable-next-line obsidianmd/prefer-window-timers -- Node process; does not run in window
         clearTimeout(timeoutId);
         return response.ok || response.status === 204;
     } catch {
@@ -128,9 +131,10 @@ async function forwardRequest(request: {
         );
 
         const controller = new AbortController();
+        // eslint-disable-next-line obsidianmd/prefer-window-timers -- Node process; does not run in window
         const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
 
-        // eslint-disable-next-line no-restricted-globals
+        // eslint-disable-next-line no-restricted-globals -- Node.js bridge; global fetch is correct here
         const response = await fetch(MCP_URL, {
             method: "POST",
             headers: {
@@ -143,6 +147,7 @@ async function forwardRequest(request: {
             signal: controller.signal,
         });
 
+        // eslint-disable-next-line obsidianmd/prefer-window-timers -- Node process; does not run in window
         clearTimeout(timeoutId);
 
         // Handle 204 No Content (notifications)

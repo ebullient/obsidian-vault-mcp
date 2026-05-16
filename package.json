@@ -37,7 +37,7 @@
     "@typescript-eslint/parser": "^8.46.4",
     "auto-changelog": "^2.5.0",
     "esbuild": "^0.28.0",
-    "eslint-plugin-obsidianmd": "^0.2.9",
+    "eslint-plugin-obsidianmd": "^0.3.0",
     "happy-dom": "^20.9.0",
     "obsidian": "^1.12.3",
     "obsidian-test-mocks": "^2.0.1",

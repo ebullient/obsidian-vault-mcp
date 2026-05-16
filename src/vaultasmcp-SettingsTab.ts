@@ -293,7 +293,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                     statusText.addClass("vault-mcp-status-error");
                     break;
                 case "stopped":
-                    statusText.setText("⚪️ Server is stopped.");
+                    statusText.setText("⚪️ Server stopped.");
                     statusText.addClass("vault-mcp-status-stopped");
                     break;
             }

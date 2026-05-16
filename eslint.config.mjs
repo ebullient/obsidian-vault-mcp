@@ -7,6 +7,8 @@ import obsidianmd from "eslint-plugin-obsidianmd";
 export default defineConfig([
     ...obsidianmd.configs.recommended,
     globalIgnores([
+        ".claude/",
+        "build/",
         "test/",
         "vitest.config.ts",
         "package.json",
@@ -17,28 +19,26 @@ export default defineConfig([
         languageOptions: {
             parser: tsparser,
             parserOptions: {
-                project: "./tsconfig.bridge.json"
+                project: "./tsconfig.bridge.json",
+                tsconfigRootDir: import.meta.dirname,
             },
             globals: {
                 ...globals.node,
-            },
-        },
-        rules: {
-            "obsidianmd/prefer-active-window-timers": "off",
-            "obsidianmd/no-nodejs-modules": "off",
-        },
+            }
+        }
     },
     {
         files: ["src/**/*.ts"],
         languageOptions: {
             parser: tsparser,
             parserOptions: {
-                project: "./tsconfig.json"
+                project: "./tsconfig.json",
+                tsconfigRootDir: import.meta.dirname,
             },
             globals: {
                 ...globals.node,
                 window: "readonly",
-            },
+            }
         },
         // Optional project overrides
         rules: {
@@ -48,8 +48,8 @@ export default defineConfig([
                     brands: ["Open WebUI", "notes/**\ndrafts/**", "archive/**\ntemplates/**", "private/**\nsecrets.md"],
                     acronyms: ["VMCP", "MCP", "URL", "ACL"],
                     enforceCamelCaseLower: true,
-                },
-            ],
-        },
-    },
+                }
+            ]
+        }
+    }
 ]);
