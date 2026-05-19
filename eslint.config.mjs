@@ -5,7 +5,6 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import obsidianmd from "eslint-plugin-obsidianmd";
 
 export default defineConfig([
-    ...obsidianmd.configs.recommended,
     globalIgnores([
         ".claude/",
         "build/",
@@ -14,6 +13,7 @@ export default defineConfig([
         "package.json",
         "*.mjs",
     ]),
+    ...obsidianmd.configs.recommended,
     {
         files: ["bridge-src/**/*.ts"],
         languageOptions: {
