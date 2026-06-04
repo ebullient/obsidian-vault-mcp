@@ -688,10 +688,15 @@ export class MCPTools {
     ): Promise<{ path: string; content?: string }> {
         const periodToGranularity: Record<string, IGranularity> = {
             daily: "day",
+            day: "day",
             weekly: "week",
+            week: "week",
             monthly: "month",
+            month: "month",
             quarterly: "quarter",
+            quarter: "quarter",
             yearly: "year",
+            year: "year",
         };
 
         const granularity = periodToGranularity[period];
