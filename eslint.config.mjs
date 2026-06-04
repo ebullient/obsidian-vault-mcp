@@ -42,6 +42,8 @@ export default defineConfig([
         },
         // Optional project overrides
         rules: {
+            "obsidianmd/no-unsupported-api": "warn",
+            "@typescript-eslint/no-deprecated": "warn",
             "obsidianmd/ui/sentence-case": [
                 "warn",
                 {
