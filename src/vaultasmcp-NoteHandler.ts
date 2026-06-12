@@ -192,6 +192,10 @@ export class NoteHandler {
         newText: string,
         section?: string,
     ): Promise<{ path: string }> {
+        if (!path) throw new Error("path is required");
+        if (!oldText) throw new Error("old_text is required");
+        if (newText === undefined || newText === null)
+            throw new Error("new_text is required");
         const file = this.getFileWithAclCheck(path, true);
 
         await this.app.vault.process(file, (data) => {
