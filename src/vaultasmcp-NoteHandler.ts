@@ -181,6 +181,81 @@ export class NoteHandler {
     }
 
     /**
+     * Patch a note by replacing an exact string with new text.
+     * Optionally scoped to a named section (heading + its content).
+     * Errors if old_text is not found, or found more than once.
+     * ACL: Requires write access
+     */
+    async patchNote(
+        path: string,
+        oldText: string,
+        newText: string,
+        section?: string,
+    ): Promise<{ path: string }> {
+        const file = this.getFileWithAclCheck(path, true);
+
+        await this.app.vault.process(file, (data) => {
+            let searchIn = data;
+            let searchOffset = 0;
+
+            if (section) {
+                const cache = this.app.metadataCache.getFileCache(file);
+                if (!cache?.headings) {
+                    throw new Error(
+                        "Section lookup unavailable: note metadata not " +
+                            "indexed yet. Retry in a moment.",
+                    );
+                }
+                const normalizedSection = this.normalizeHeading(section);
+                const headingIndex = cache.headings.findIndex(
+                    (h) =>
+                        this.normalizeHeading(h.heading) === normalizedSection,
+                );
+                if (headingIndex === -1) {
+                    throw new Error(`Section not found: ${section}`);
+                }
+                const start =
+                    cache.headings[headingIndex].position.start.offset;
+                const end = this.findSectionEnd(
+                    cache.headings,
+                    headingIndex,
+                    data.length,
+                );
+                searchIn = data.substring(start, end);
+                searchOffset = start;
+            }
+
+            const idx = searchIn.indexOf(oldText);
+            if (idx === -1) {
+                throw new Error(
+                    section
+                        ? `Text not found in section "${section}"`
+                        : "Text not found in note",
+                );
+            }
+            if (searchIn.indexOf(oldText, idx + 1) !== -1) {
+                throw new Error(
+                    section
+                        ? `Text appears more than once in section "${section}"; ` +
+                              "provide more context to make it unique"
+                        : "Text appears more than once in note; " +
+                              "provide more context to make it unique",
+                );
+            }
+
+            const absIdx = searchOffset + idx;
+            return (
+                data.substring(0, absIdx) +
+                newText +
+                data.substring(absIdx + oldText.length)
+            );
+        });
+
+        this.logger.debug(`Patched note: ${file.path}`);
+        return { path: file.path };
+    }
+
+    /**
      * Update (replace) note content
      * ACL: Requires write access
      */

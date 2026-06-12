@@ -371,7 +371,7 @@ export class MCPTools {
                 description:
                     "Append content to an existing note, " +
                     "at end of file or after a heading. " +
-                    "Use update_note instead when replacing an existing section.",
+                    "Use patch_note instead when replacing existing content.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -410,6 +410,41 @@ export class MCPTools {
                         content: { type: "string" },
                     },
                     required: ["path", "content"],
+                },
+                outputSchema: pathSchema,
+                annotations: {
+                    readOnlyHint: false,
+                    idempotentHint: false,
+                    destructiveHint: true,
+                },
+            },
+            {
+                name: "patch_note",
+                description:
+                    "Replace an exact string in a note; " +
+                    "prefer over update_note for surgical edits. " +
+                    "Fails if old_text is not found or is not unique " +
+                    "(include surrounding context to disambiguate).",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        path: { type: "string" },
+                        old_text: {
+                            type: "string",
+                            description:
+                                "Exact string to replace; must appear exactly once.",
+                        },
+                        new_text: {
+                            type: "string",
+                            description: "Replacement text.",
+                        },
+                        section: {
+                            type: "string",
+                            description:
+                                "Scope search to this heading (case-insensitive).",
+                        },
+                    },
+                    required: ["path", "old_text", "new_text"],
                 },
                 outputSchema: pathSchema,
                 annotations: {
@@ -589,6 +624,13 @@ export class MCPTools {
                     args.content as string,
                     args.heading as string | undefined,
                     args.separator as string | undefined,
+                );
+            case "patch_note":
+                return await this.noteHandler.patchNote(
+                    args.path as string,
+                    args.old_text as string,
+                    args.new_text as string,
+                    args.section as string | undefined,
                 );
             case "update_note":
                 return await this.updateNote(
