@@ -34,7 +34,7 @@
     "@modelcontextprotocol/inspector": "^0.21.1",
     "@types/moment": "^2.13.0",
     "@types/node": "^25.0.9",
-    "@typescript-eslint/parser": "^8.59.2",
+    "@typescript-eslint/parser": "^8.59.3",
     "auto-changelog": "^2.5.1",
     "esbuild": "^0.28.0",
     "eslint-plugin-obsidianmd": "^0.3.0",
