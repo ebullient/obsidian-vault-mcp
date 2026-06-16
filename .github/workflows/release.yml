@@ -38,12 +38,18 @@ jobs:
       # zizmor: ignore[artipacked]
       with:
         fetch-depth: 0 # otherwise, you will failed to push refs to dest repo
+        submodules: true
 
     - name: Use Node.js
       uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
       with:
         node-version: '24'
         cache: 'npm'
+
+    - id: git-config
+      run: |
+        git config user.name "$GH_BOT_NAME"
+        git config user.email "$GH_BOT_EMAIL"
 
     # Build the plugin
     - name: Build and Tag
@@ -57,9 +63,6 @@ jobs:
         echo "version: $INPUT_VERSION"
         echo "update_manifest: $INPUT_UPDATE_MANIFEST"
         echo "update_brat: $INPUT_UPDATE_BRAT"
-
-        git config user.name "$GH_BOT_NAME"
-        git config user.email "$GH_BOT_EMAIL"
 
         npm ci
         npm version "$INPUT_VERSION" --no-git-tag-version
@@ -90,6 +93,18 @@ jobs:
 
         npm run brat-notes -- "${VERSION}"
         echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+    # Build the bridge (submodule), tag it, and copy artifact into build/
+    - name: Build bridge
+      env:
+        RELEASE_VERSION: ${{ steps.build.outputs.version }}
+      run: |
+        cd bridge
+        npm ci
+        npm run build
+        cp mcp-bridge.js ../build/mcp-bridge.js
+        git tag "bridge/$RELEASE_VERSION"
+        git push origin "bridge/$RELEASE_VERSION"
 
     # Package the required files into a zip
     - name: Package

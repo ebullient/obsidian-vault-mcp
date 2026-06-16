@@ -2,7 +2,7 @@
 
 ![GitHub all releases](https://img.shields.io/github/downloads/ebullient/obsidian-vault-mcp/total?color=success)
 
-An Obsidian plugin that runs an MCP (Model Context Protocol) server, enabling external LLM tools to access your vault. Supports HTTP transport natively (Open WebUI, remote LLMs) and stdio transport via included bridge script (Claude Desktop).
+An Obsidian plugin that runs an MCP (Model Context Protocol) server, enabling external LLM tools to access your vault. Supports HTTP transport natively (Open WebUI, remote LLMs). An optional [`bridge` script](#claude-desktop) provides a bridge from HTTP to stdio (Claude Desktop).
 
 > **Important Notes**
 >
@@ -126,7 +126,7 @@ Claude Desktop uses stdio transport for MCP servers, so you'll need the
 1. Download `mcp-bridge.js` from the [latest GitHub
    release](https://github.com/ebullient/obsidian-vault-mcp/releases/latest)
    and save it somewhere accessible (e.g.,
-   `~/.obsidian/scripts/mcp-bridge.js`)
+   `~/.obsidian/scripts/mcp-bridge.js`). Source is in the [`bridge` branch](https://github.com/ebullient/obsidian-vault-mcp/tree/bridge/src/mcp-bridge.ts).
 
 2. Find your Claude Desktop config file:
    - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`

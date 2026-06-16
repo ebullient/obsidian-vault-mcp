@@ -1,0 +1,4 @@
+[submodule "bridge"]
+	path = bridge
+	url = git@github.com:ebullient/obsidian-vault-mcp.git
+	branch = bridge

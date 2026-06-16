@@ -7,6 +7,7 @@ import obsidianmd from "eslint-plugin-obsidianmd";
 export default defineConfig([
     globalIgnores([
         ".claude/",
+        "bridge/",
         "build/",
         "test/",
         "vitest.config.ts",
@@ -14,19 +15,6 @@ export default defineConfig([
         "*.mjs",
     ]),
     ...obsidianmd.configs.recommended,
-    {
-        files: ["bridge-src/**/*.ts"],
-        languageOptions: {
-            parser: tsparser,
-            parserOptions: {
-                project: "./tsconfig.bridge.json",
-                tsconfigRootDir: import.meta.dirname,
-            },
-            globals: {
-                ...globals.node,
-            }
-        }
-    },
     {
         files: ["src/**/*.ts"],
         languageOptions: {
