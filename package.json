@@ -1,0 +1,20 @@
+{
+  "name": "obsidian-vault-mcp-bridge",
+  "version": "0.8.1",
+  "description": "MCP stdio-to-HTTP bridge for obsidian-vault-mcp plugin.",
+  "scripts": {
+    "fix": "npx @biomejs/biome check --write ./src",
+    "format": "npx @biomejs/biome format ./src",
+    "lint": "npx @biomejs/biome lint ./src",
+    "prebuild": "npx @biomejs/biome check ./src",
+    "build": "node esbuild.config.mjs production",
+    "postbuild": "chmod +x mcp-bridge.js"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@biomejs/biome": "2.4.11",
+    "@types/node": "^25.0.9",
+    "esbuild": "^0.28.0",
+    "typescript": "6.0.2"
+  }
+}

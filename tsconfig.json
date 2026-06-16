@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "skipLibCheck": true,
+    "target": "ES2022",
+    "noImplicitAny": true,
+    "isolatedModules": true,
+    "strictNullChecks": true,
+    "inlineSourceMap": true,
+    "inlineSources": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}
