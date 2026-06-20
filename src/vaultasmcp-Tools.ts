@@ -501,10 +501,7 @@ export class MCPTools {
             {
                 name: "read_periodic_note",
                 description:
-                    "Read a periodic note (daily/weekly/monthly/quarterly/yearly). " +
-                    "Always returns the resolved path; content is included when the note exists. " +
-                    "If content is absent and create is true, the note is created using the " +
-                    "configured template and returned with content.",
+                    "Reads or creates a periodic note; pass create:true to create it from the template if missing.",
                 inputSchema: {
                     type: "object",
                     properties: {
