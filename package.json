@@ -57,6 +57,7 @@
   "auto-changelog": {
     "backfillLimit": false,
     "commitLimit": false,
+    "tagPattern": "0\\.[1-8]\\.\\d+",
     "ignoreCommitPattern": "(🔖|🔨|🧹|changelog|release|Update README).*",
     "replaceText": {
       "([;.,] [rR]esolves) #\\d+\\.?\\s*$": "$1",
