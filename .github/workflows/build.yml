@@ -3,7 +3,9 @@ name: CI Test
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - 0.8.x
     paths:
       - '**.ts'
       - '**.json'
@@ -36,6 +38,6 @@ jobs:
       id: build
       run: |
         npm ci
+        npm run test
         npm run build
         npm run eslint
-        # npm run test
