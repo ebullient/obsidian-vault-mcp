@@ -190,6 +190,21 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                 }),
             );
 
+        // Normalize quotes
+        new Setting(containerEl)
+            .setName("Normalize quotes in patch_note")
+            .setDesc(
+                "Treat curly quotes as equivalent to straight quotes when matching text in patch_note; " +
+                    "useful when AI clients send straight quotes for content that uses curly quotes.",
+            )
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.newSettings.normalizeQuotes)
+                    .onChange((value) => {
+                        this.newSettings.normalizeQuotes = value;
+                    }),
+            );
+
         // Server Host
         new Setting(containerEl)
             .setName("Server host")

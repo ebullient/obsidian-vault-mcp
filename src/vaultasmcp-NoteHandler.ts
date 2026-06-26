@@ -1,5 +1,5 @@
 import { type App, normalizePath, TFile } from "obsidian";
-import type { Logger } from "./@types/settings";
+import type { CurrentSettings, Logger } from "./@types/settings";
 import type { PathACLChecker } from "./vaultasmcp-PathACL";
 import type { TemplateHandler } from "./vaultasmcp-TemplateHandler";
 
@@ -22,6 +22,7 @@ export class NoteHandler {
         private templateHandler: TemplateHandler,
         private aclChecker: PathACLChecker,
         private logger: Logger,
+        private current: CurrentSettings,
     ) {}
 
     /**
@@ -177,6 +178,89 @@ export class NoteHandler {
         }
 
         this.logger.debug(`Appended to note: ${file.path}`);
+        return { path: file.path };
+    }
+
+    /**
+     * Patch a note by replacing an exact string with new text.
+     * Optionally scoped to a named section (heading + its content).
+     * Errors if old_text is not found, or found more than once.
+     * ACL: Requires write access
+     */
+    async patchNote(
+        path: string,
+        oldText: string,
+        newText: string,
+        section?: string,
+    ): Promise<{ path: string }> {
+        if (!path) throw new Error("path is required");
+        if (!oldText) throw new Error("old_text is required");
+        if (newText === undefined || newText === null)
+            throw new Error("new_text is required");
+        const file = this.getFileWithAclCheck(path, true);
+
+        await this.app.vault.process(file, (data) => {
+            const hasCRLF = data.includes("\r\n");
+            const normalizedData = this.normalize(data);
+            const normalizedOldText = this.normalize(oldText);
+
+            let searchIn = normalizedData;
+            let searchOffset = 0;
+
+            if (section) {
+                const cache = this.app.metadataCache.getFileCache(file);
+                if (!cache?.headings) {
+                    throw new Error(
+                        "Section lookup unavailable: note metadata not " +
+                            "indexed yet. Retry in a moment.",
+                    );
+                }
+                const normalizedSection = this.normalizeHeading(section);
+                const headingIndex = cache.headings.findIndex(
+                    (h) =>
+                        this.normalizeHeading(h.heading) === normalizedSection,
+                );
+                if (headingIndex === -1) {
+                    throw new Error(`Section not found: ${section}`);
+                }
+                const start =
+                    cache.headings[headingIndex].position.start.offset;
+                const end = this.findSectionEnd(
+                    cache.headings,
+                    headingIndex,
+                    normalizedData.length,
+                );
+                searchIn = normalizedData.substring(start, end);
+                searchOffset = start;
+            }
+
+            const idx = searchIn.indexOf(normalizedOldText);
+            if (idx === -1) {
+                throw new Error(
+                    section
+                        ? `Text not found in section "${section}"`
+                        : "Text not found in note",
+                );
+            }
+            if (searchIn.indexOf(normalizedOldText, idx + 1) !== -1) {
+                throw new Error(
+                    section
+                        ? `Text appears more than once in section "${section}"; ` +
+                              "provide more context to make it unique"
+                        : "Text appears more than once in note; " +
+                              "provide more context to make it unique",
+                );
+            }
+
+            const absIdx = searchOffset + idx;
+            const result =
+                normalizedData.substring(0, absIdx) +
+                newText +
+                normalizedData.substring(absIdx + normalizedOldText.length);
+            return hasCRLF ? result.replace(/\n/g, "\r\n") : result;
+        });
+
+        this.logger.debug(`Patched note: ${file.path}`);
         return { path: file.path };
     }
 
@@ -672,6 +756,16 @@ export class NoteHandler {
         this.logger.debug(`Subpath not found: #${subpath} in ${file.path}`);
         return "";
     }
+
+    private normalize = (value: string): string => {
+        let result = value.replace(/\r\n/g, "\n");
+        if (this.current.normalizeQuotes()) {
+            result = result
+                .replace(/[\u2018\u2019\u201a\u201b\u2032\u2035]/g, "'")
+                .replace(/[\u201c\u201d\u201e\u201f\u2033\u2036]/g, '"');
+        }
+        return result;
+    };
 
     private normalizeHeading = (value: string): string => {
         let decoded = value;

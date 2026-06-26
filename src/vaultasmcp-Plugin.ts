@@ -247,4 +247,8 @@ export class VaultAsMCPPlugin
     serverVersion(): string {
         return this.manifest.version;
     }
+
+    normalizeQuotes(): boolean {
+        return this.settings.normalizeQuotes ?? true;
+    }
 }

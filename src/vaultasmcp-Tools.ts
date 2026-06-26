@@ -51,6 +51,7 @@ export class MCPTools {
             this.templateHandler,
             this.aclChecker,
             logger,
+            current,
         );
     }
 
@@ -419,6 +420,41 @@ export class MCPTools {
                 },
             },
             {
+                name: "patch_note",
+                description:
+                    "Replace an exact string in a note; " +
+                    "prefer over update_note for surgical edits. " +
+                    "Fails if old_text is not found or is not unique " +
+                    "(include surrounding context to disambiguate).",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        path: { type: "string" },
+                        old_text: {
+                            type: "string",
+                            description:
+                                "Exact string to replace; must appear exactly once.",
+                        },
+                        new_text: {
+                            type: "string",
+                            description: "Replacement text.",
+                        },
+                        section: {
+                            type: "string",
+                            description:
+                                "Scope search to this heading (case-insensitive).",
+                        },
+                    },
+                    required: ["path", "old_text", "new_text"],
+                },
+                outputSchema: pathSchema,
+                annotations: {
+                    readOnlyHint: false,
+                    idempotentHint: false,
+                    destructiveHint: true,
+                },
+            },
+            {
                 name: "delete_note",
                 description:
                     "Move a note to the system trash (recoverable). " +
@@ -594,6 +630,13 @@ export class MCPTools {
                 return await this.updateNote(
                     args.path as string,
                     args.content as string,
+                );
+            case "patch_note":
+                return await this.noteHandler.patchNote(
+                    args.path as string,
+                    args.old_text as string,
+                    args.new_text as string,
+                    args.section as string | undefined,
                 );
             case "delete_note":
                 return await this.deleteNote(args.path as string);
