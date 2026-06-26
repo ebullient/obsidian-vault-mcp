@@ -10,6 +10,7 @@ export interface CurrentSettings {
     serverPort(): number;
     serverHost(): string;
     serverVersion(): string;
+    normalizeQuotes(): boolean;
 }
 
 export interface VaultAsMCPSettings {
@@ -19,6 +20,7 @@ export interface VaultAsMCPSettings {
     debug: boolean;
     bearerToken?: string;
     pathACL: PathACL;
+    normalizeQuotes: boolean;
 }
 
 export type ServerStatus = "stopped" | "running" | "error";

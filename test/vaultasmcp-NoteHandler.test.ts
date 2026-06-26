@@ -19,6 +19,7 @@ const openSettings: CurrentSettings = {
     serverPort: () => 3000,
     serverHost: () => "localhost",
     serverVersion: () => "1",
+    normalizeQuotes: () => true,
 };
 
 // Minimal stub — tests here don't exercise template creation
@@ -35,6 +36,7 @@ function makeHandler(
         templateHandler,
         acl,
         logger,
+        settings,
     );
     return { handler, app };
 }
@@ -341,6 +343,83 @@ describe("NoteHandler.readNote with sections", () => {
         );
         const result = await handler.readNote("notes/doc.md", ["Missing"]);
         expect(result.content).toBe("");
+    });
+});
+
+describe("NoteHandler.patchNote", () => {
+    it("replaces exact text", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/doc.md": "hello world",
+        });
+        await handler.patchNote("notes/doc.md", "world", "there");
+        const result = await handler.readNote("notes/doc.md");
+        expect(result.content).toBe("hello there");
+    });
+
+    it("throws when text is not found", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/doc.md": "hello world",
+        });
+        await expect(
+            handler.patchNote("notes/doc.md", "missing", "x"),
+        ).rejects.toThrow("Text not found in note");
+    });
+
+    it("throws when text appears more than once", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/doc.md": "foo foo",
+        });
+        await expect(
+            handler.patchNote("notes/doc.md", "foo", "bar"),
+        ).rejects.toThrow("Text appears more than once");
+    });
+
+    it("normalizes CRLF in file and old_text before matching", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/doc.md": "line one\r\nline two\r\nline three",
+        });
+        await handler.patchNote(
+            "notes/doc.md",
+            "line one\nline two",
+            "replaced",
+        );
+        const result = await handler.readNote("notes/doc.md");
+        expect(result.content).toBe("replaced\r\nline three");
+    });
+
+    it("preserves CRLF in unchanged parts of the file", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/doc.md": "before\r\nTARGET\r\nafter",
+        });
+        await handler.patchNote("notes/doc.md", "TARGET", "REPLACED");
+        const result = await handler.readNote("notes/doc.md");
+        expect(result.content).toBe("before\r\nREPLACED\r\nafter");
+    });
+
+    it("matches curly quotes against straight quotes when normalizeQuotes is on", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/doc.md": "She said “hello” and ‘goodbye’",
+        });
+        await handler.patchNote(
+            "notes/doc.md",
+            'She said "hello" and \'goodbye\'',
+            "redacted",
+        );
+        const result = await handler.readNote("notes/doc.md");
+        expect(result.content).toBe("redacted");
+    });
+
+    it("does not match curly quotes when normalizeQuotes is off", async () => {
+        const noNormSettings: CurrentSettings = {
+            ...openSettings,
+            normalizeQuotes: () => false,
+        };
+        const { handler } = makeHandler(noNormSettings, {
+            "notes/doc.md": "She said “hello”",
+        });
+        await expect(
+            handler.patchNote("notes/doc.md", 'She said "hello"', "x"),
+        ).rejects.toThrow("Text not found in note");
     });
 });
 

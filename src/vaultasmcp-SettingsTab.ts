@@ -328,6 +328,11 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                         desc: "Enable debug messages.",
                         control: { type: "toggle", key: "debug" },
                     },
+                    {
+                        name: "Normalize quotes in patch_note",
+                        desc: "Treat curly quotes as equivalent to straight quotes when matching text in patch_note; useful when AI clients send straight quotes for content that uses curly quotes.",
+                        control: { type: "toggle", key: "normalizeQuotes" },
+                    },
                 ],
             },
 

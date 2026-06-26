@@ -1,5 +1,5 @@
 import { type App, normalizePath, TFile } from "obsidian";
-import type { Logger } from "./@types/settings";
+import type { CurrentSettings, Logger } from "./@types/settings";
 import type { PathACLChecker } from "./vaultasmcp-PathACL";
 import type { TemplateHandler } from "./vaultasmcp-TemplateHandler";
 
@@ -22,6 +22,7 @@ export class NoteHandler {
         private templateHandler: TemplateHandler,
         private aclChecker: PathACLChecker,
         private logger: Logger,
+        private current: CurrentSettings,
     ) {}
 
     /**
@@ -199,7 +200,11 @@ export class NoteHandler {
         const file = this.getFileWithAclCheck(path, true);
 
         await this.app.vault.process(file, (data) => {
-            let searchIn = data;
+            const hasCRLF = data.includes("\r\n");
+            const normalizedData = this.normalize(data);
+            const normalizedOldText = this.normalize(oldText);
+
+            let searchIn = normalizedData;
             let searchOffset = 0;
 
             if (section) {
@@ -223,13 +228,13 @@ export class NoteHandler {
                 const end = this.findSectionEnd(
                     cache.headings,
                     headingIndex,
-                    data.length,
+                    normalizedData.length,
                 );
-                searchIn = data.substring(start, end);
+                searchIn = normalizedData.substring(start, end);
                 searchOffset = start;
             }
 
-            const idx = searchIn.indexOf(oldText);
+            const idx = searchIn.indexOf(normalizedOldText);
             if (idx === -1) {
                 throw new Error(
                     section
@@ -237,7 +242,7 @@ export class NoteHandler {
                         : "Text not found in note",
                 );
             }
-            if (searchIn.indexOf(oldText, idx + 1) !== -1) {
+            if (searchIn.indexOf(normalizedOldText, idx + 1) !== -1) {
                 throw new Error(
                     section
                         ? `Text appears more than once in section "${section}"; ` +
@@ -248,11 +253,11 @@ export class NoteHandler {
             }
 
             const absIdx = searchOffset + idx;
-            return (
-                data.substring(0, absIdx) +
+            const result =
+                normalizedData.substring(0, absIdx) +
                 newText +
-                data.substring(absIdx + oldText.length)
-            );
+                normalizedData.substring(absIdx + normalizedOldText.length);
+            return hasCRLF ? result.replace(/\n/g, "\r\n") : result;
         });
 
         this.logger.debug(`Patched note: ${file.path}`);
@@ -751,6 +756,16 @@ export class NoteHandler {
         this.logger.debug(`Subpath not found: #${subpath} in ${file.path}`);
         return "";
     }
+
+    private normalize = (value: string): string => {
+        let result = value.replace(/\r\n/g, "\n");
+        if (this.current.normalizeQuotes()) {
+            result = result
+                .replace(/[\u2018\u2019\u201a\u201b\u2032\u2035]/g, "'")
+                .replace(/[\u201c\u201d\u201e\u201f\u2033\u2036]/g, '"');
+        }
+        return result;
+    };
 
     private normalizeHeading = (value: string): string => {
         let decoded = value;

@@ -5,6 +5,7 @@ export const DEFAULT_SETTINGS: VaultAsMCPSettings = {
     serverHost: "127.0.0.1",
     autoStart: true,
     debug: false,
+    normalizeQuotes: true,
     pathACL: {
         forbidden: [],
         readOnly: [],

@@ -51,6 +51,7 @@ export class MCPTools {
             this.templateHandler,
             this.aclChecker,
             logger,
+            current,
         );
     }
 
