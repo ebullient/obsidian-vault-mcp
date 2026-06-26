@@ -96,6 +96,7 @@ jobs:
 
     # Build the bridge (submodule), tag it, and copy artifact into build/
     - name: Build bridge
+      if: github.ref == 'refs/heads/main'
       env:
         RELEASE_VERSION: ${{ steps.build.outputs.version }}
       run: |
@@ -105,6 +106,12 @@ jobs:
         cp mcp-bridge.js ../build/mcp-bridge.js
         git tag "bridge/$RELEASE_VERSION"
         git push origin "bridge/$RELEASE_VERSION"
+
+    # bridge-src/ is built by npm run build (via preversion); verify artifact is in build/
+    - name: Build bridge (bridge-src)
+      if: github.ref == 'refs/heads/0.8.x'
+      run: |
+        test -x build/mcp-bridge.js
 
     # Package the required files into a zip
     - name: Package
