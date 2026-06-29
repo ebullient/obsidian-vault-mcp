@@ -27,8 +27,11 @@ export class MCPHandler {
                 case "initialize":
                     return this.handleInitialize(request);
                 case "notifications/initialized":
+                case "notifications/roots/list_changed":
                     // Notifications don't get responses
-                    this.logger.debug("Received initialized notification");
+                    this.logger.debug(
+                        `Received notification: ${request.method}`,
+                    );
                     return null;
                 case "tools/list":
                     return this.handleToolsList(request);
