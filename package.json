@@ -37,7 +37,7 @@
     "auto-changelog": "^2.6.0",
     "esbuild": "^0.28.0",
     "eslint-plugin-obsidianmd": "^0.3.0",
-    "happy-dom": "^20.9.0",
+    "happy-dom": "^20.10.1",
     "obsidian": "^1.13.1",
     "obsidian-test-mocks": "^3.0.0",
     "tslib": "^2.8.1",
