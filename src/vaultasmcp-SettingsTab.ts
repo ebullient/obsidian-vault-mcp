@@ -329,6 +329,14 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                         control: { type: "toggle", key: "debug" },
                     },
                     {
+                        name: "Log permission messages",
+                        desc: "Enable logging of ACL and authorization denials to the console.",
+                        control: {
+                            type: "toggle",
+                            key: "logPermissionMessages",
+                        },
+                    },
+                    {
                         name: "Normalize quotes in patch_note",
                         desc: "Treat curly quotes as equivalent to straight quotes when matching text in patch_note; useful when AI clients send straight quotes for content that uses curly quotes.",
                         control: { type: "toggle", key: "normalizeQuotes" },

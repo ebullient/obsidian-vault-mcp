@@ -19,6 +19,7 @@ function makeSettings(
 const logger: Logger = {
     debug: vi.fn(),
     warn: vi.fn(),
+    warnAcl: vi.fn(),
     error: vi.fn(),
 };
 

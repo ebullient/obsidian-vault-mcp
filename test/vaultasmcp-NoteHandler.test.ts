@@ -10,6 +10,7 @@ import type { TemplateHandler } from "../src/vaultasmcp-TemplateHandler.js";
 const logger: Logger = {
     debug: vi.fn(),
     warn: vi.fn(),
+    warnAcl: vi.fn(),
     error: vi.fn(),
 };
 

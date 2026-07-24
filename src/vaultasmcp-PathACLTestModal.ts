@@ -13,6 +13,7 @@ interface TestResult {
 const testLogger: Logger = {
     debug: () => {},
     warn: () => {},
+    warnAcl: () => {},
     error: () => "",
 };
 
@@ -32,6 +33,7 @@ export class PathACLTestModal extends Modal {
             bearerToken: () => "",
             serverHost: () => "localhost",
             serverVersion: () => "0.1",
+            normalizeQuotes: () => false,
         };
 
         this.aclChecker = new PathACLChecker(currentSettings, testLogger);

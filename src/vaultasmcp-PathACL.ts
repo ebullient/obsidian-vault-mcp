@@ -17,7 +17,7 @@ export class PathACLChecker {
     checkReadAccess(path: string): void {
         const acl = this.current.pathACL();
         if (this.matchesAny(path, acl.forbidden)) {
-            this.logger.warn(`ACL denied read access: ${path}`);
+            this.logger.warnAcl(`ACL denied read access: ${path}`);
             throw new Error(`Access forbidden: ${path}`);
         }
     }
@@ -30,13 +30,13 @@ export class PathACLChecker {
     checkWriteAccess(path: string): void {
         const acl = this.current.pathACL();
         if (this.matchesAny(path, acl.forbidden)) {
-            this.logger.warn(`ACL denied write access: ${path} (forbidden)`);
+            this.logger.warnAcl(`ACL denied write access: ${path} (forbidden)`);
             throw new Error(`Access forbidden: ${path}`);
         }
 
         // If writable list is not empty, path must be in writable list
         if (acl.writable.length > 0 && !this.matchesAny(path, acl.writable)) {
-            this.logger.warn(
+            this.logger.warnAcl(
                 `ACL denied write access: ${path} (not in writable list)`,
             );
             throw new Error(
@@ -46,7 +46,7 @@ export class PathACLChecker {
 
         // Check if explicitly read-only
         if (this.matchesAny(path, acl.readOnly)) {
-            this.logger.warn(`ACL denied write access: ${path} (read-only)`);
+            this.logger.warnAcl(`ACL denied write access: ${path} (read-only)`);
             throw new Error(`Write access denied: ${path} (read-only)`);
         }
     }

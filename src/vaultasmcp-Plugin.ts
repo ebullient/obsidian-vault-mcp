@@ -215,6 +215,12 @@ export class VaultAsMCPPlugin
         console.debug("(VMCP ⚠️)", message, ...params);
     }
 
+    warnAcl(message: string, ...params: unknown[]): void {
+        if (this.settings?.logPermissionMessages) {
+            console.debug("(VMCP ⚠️)", message, ...params);
+        }
+    }
+
     error(error: unknown, message = "", ...params: unknown[]): string {
         if (message) {
             console.error("(VMCP)", message, error, ...params);

@@ -18,6 +18,7 @@ export interface VaultAsMCPSettings {
     serverHost: string;
     autoStart: boolean;
     debug: boolean;
+    logPermissionMessages: boolean;
     bearerToken?: string;
     pathACL: PathACL;
     normalizeQuotes: boolean;
@@ -28,6 +29,7 @@ export type ServerStatus = "stopped" | "running" | "error";
 export interface Logger {
     debug(message: string, ...params: unknown[]): void;
     warn(message: string, ...params: unknown[]): void;
+    warnAcl(message: string, ...params: unknown[]): void;
     error(error: unknown, message?: string, ...params: unknown[]): string;
 }
 
