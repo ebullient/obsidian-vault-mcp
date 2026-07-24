@@ -622,7 +622,7 @@ export class NoteHandler {
 
         for (const link of linkedFiles.values()) {
             // Skip null file entries and non-markdown files
-            if (!link.file || link.file.extension !== "md") {
+            if (link.file?.extension !== "md") {
                 continue;
             }
 
