@@ -30,6 +30,9 @@ import { NoteHandler } from "./vaultasmcp-NoteHandler";
 import { PathACLChecker } from "./vaultasmcp-PathACL";
 import { TemplateHandler } from "./vaultasmcp-TemplateHandler";
 
+// Cap read_multiple_notes to avoid flooding callers with content
+const MAX_READ_MULTIPLE_PATHS = 10;
+
 export class MCPTools {
     private noteHandler: NoteHandler;
     private templateHandler: TemplateHandler;
@@ -151,14 +154,17 @@ export class MCPTools {
                 name: "read_multiple_notes",
                 description:
                     "Read multiple notes in one request. " +
-                    "Returns a map of path to content or error.",
+                    "Returns a map of path to content or error. " +
+                    `Max ${MAX_READ_MULTIPLE_PATHS} paths per call.`,
                 inputSchema: {
                     type: "object",
                     properties: {
                         paths: {
                             type: "array",
                             items: { type: "string" },
-                            description: "Array of note paths to read",
+                            description:
+                                "Array of note paths to read " +
+                                `(max ${MAX_READ_MULTIPLE_PATHS}).`,
                         },
                     },
                     required: ["paths"],
@@ -665,6 +671,14 @@ export class MCPTools {
     private async readMultipleNotes(paths: string[]): Promise<{
         notes: Record<string, { content?: string; error?: string }>;
     }> {
+        if (paths.length > MAX_READ_MULTIPLE_PATHS) {
+            throw new Error(
+                `Too many paths requested (${paths.length}); ` +
+                    `max is ${MAX_READ_MULTIPLE_PATHS}. ` +
+                    "Split into multiple calls.",
+            );
+        }
+
         const results: Record<string, { content?: string; error?: string }> =
             {};
 
