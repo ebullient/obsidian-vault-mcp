@@ -62,7 +62,6 @@ export class TemplateHandler {
     async createFromTemplate(
         templatePath: string,
         targetPath: string,
-        targetFolder?: string,
     ): Promise<TFile> {
         const normalizedTemplate = normalizePath(templatePath);
         const templateFile =
@@ -79,11 +78,7 @@ export class TemplateHandler {
             );
         }
 
-        return await this.createWithTemplater(
-            templateFile,
-            targetPath,
-            targetFolder,
-        );
+        return await this.createWithTemplater(templateFile, targetPath);
     }
 
     /**
@@ -149,7 +144,6 @@ export class TemplateHandler {
     private async createWithTemplater(
         templateFile: TFile,
         targetPath: string,
-        targetFolder?: string,
     ): Promise<TFile> {
         const templater = this.app.plugins.getPlugin("templater-obsidian");
         if (!templater?.templater) {
@@ -161,17 +155,12 @@ export class TemplateHandler {
         let folder: TFolder | string | undefined;
         let filename: string;
 
-        if (targetFolder) {
-            folder = targetFolder;
-            filename = normalizedPath;
+        const parts = normalizedPath.split("/");
+        if (parts.length > 1) {
+            folder = parts.slice(0, -1).join("/");
+            filename = parts[parts.length - 1];
         } else {
-            const parts = normalizedPath.split("/");
-            if (parts.length > 1) {
-                folder = parts.slice(0, -1).join("/");
-                filename = parts[parts.length - 1];
-            } else {
-                filename = normalizedPath;
-            }
+            filename = normalizedPath;
         }
 
         // Remove .md extension if present (Templater adds it)
