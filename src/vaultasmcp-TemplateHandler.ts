@@ -31,8 +31,8 @@ export interface TemplateInfo {
 export class TemplateHandler {
     constructor(
         private app: App,
-        private aclChecker?: PathACLChecker,
-        private logger?: Logger,
+        private aclChecker: PathACLChecker,
+        private logger: Logger,
     ) {}
 
     /**
@@ -117,16 +117,11 @@ export class TemplateHandler {
         const collectTemplates = (currentFolder: TFolder) => {
             for (const child of currentFolder.children) {
                 if (child instanceof TFile && child.extension === "md") {
-                    // Filter by ACL if checker is available
-                    if (this.aclChecker) {
-                        try {
-                            this.aclChecker.checkReadAccess(child.path);
-                            templates.push(child.path);
-                        } catch {
-                            // Silently skip forbidden templates
-                        }
-                    } else {
+                    try {
+                        this.aclChecker.checkReadAccess(child.path);
                         templates.push(child.path);
+                    } catch {
+                        // Silently skip forbidden templates
                     }
                 } else if (child instanceof TFolder) {
                     collectTemplates(child);
@@ -182,7 +177,7 @@ export class TemplateHandler {
             );
         }
 
-        this.logger?.debug(
+        this.logger.debug(
             `Created note from template: ${templateFile.path} -> ${createdFile.path}`,
         );
         return createdFile;
