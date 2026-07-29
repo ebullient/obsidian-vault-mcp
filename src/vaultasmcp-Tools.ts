@@ -939,34 +939,23 @@ export class MCPTools {
         };
 
         const settings = this.getPeriodicSettings(period, granularity);
-        if (granularity === "week") {
-            const targetDate = date ? momentFn(date) : momentFn();
-            let file = getWeeklyNote(targetDate, getAllWeeklyNotes());
-            if (!file) {
-                if (!create) {
-                    const { path } = this.buildPeriodicPath(
-                        targetDate,
-                        settings,
-                    );
-                    return { path };
-                }
-                file = await createNote[granularity](targetDate);
-            }
-            const { content } = await this.noteHandler.readNote(file.path);
-            return { path: file.path, content };
-        }
-
         const targetDate = (date ? momentFn(date) : momentFn()).startOf(
             granularity,
         );
         const { path } = this.buildPeriodicPath(targetDate, settings);
 
-        let file = this.app.vault.getFileByPath(path);
+        let file: TFile | undefined =
+            granularity === "week"
+                ? getWeeklyNote(targetDate, getAllWeeklyNotes())
+                : (this.app.vault.getFileByPath(path) ?? undefined);
         if (!file) {
             if (!create) {
                 return { path };
             }
             file = await createNote[granularity](targetDate);
+            if (!file) {
+                return { path };
+            }
         }
 
         const { content } = await this.noteHandler.readNote(file.path);
