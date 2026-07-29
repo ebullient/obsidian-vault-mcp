@@ -109,6 +109,417 @@ describe("NoteHandler.readNote", () => {
             handler.readNote("private/secret.md"),
         ).rejects.toThrow("Access forbidden");
     });
+
+    it("omits embeds/outline/frontmatter when there is no cache", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/plain.md": "just text",
+        });
+        const result = await handler.readNote("notes/plain.md");
+        expect(result.content).toBe("just text");
+        expect(result.embeds).toBeUndefined();
+        expect(result.outline).toBeUndefined();
+        expect(result.frontmatter).toBeUndefined();
+    });
+
+    it("includes outline when sections is not used", async () => {
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/doc.md": "# Intro\nhello\n# Details\nmore",
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/doc.md",
+            makeCache(
+                [
+                    { text: "Intro", level: 1, start: 0, end: 8, line: 0 },
+                    { text: "Details", level: 1, start: 14, end: 23, line: 2 },
+                ],
+                [],
+            ),
+        );
+        const result = await handler.readNote("notes/doc.md");
+        expect(result.outline).toEqual([
+            { text: "Intro", level: 1, index: 0 },
+            { text: "Details", level: 1, index: 0 },
+        ]);
+    });
+
+    it("omits outline when sections is used", async () => {
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/doc.md": "# Intro\nhello\n# Details\nmore",
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/doc.md",
+            makeCache(
+                [
+                    { text: "Intro", level: 1, start: 0, end: 8, line: 0 },
+                    { text: "Details", level: 1, start: 14, end: 23, line: 2 },
+                ],
+                [],
+            ),
+        );
+        const result = await handler.readNote("notes/doc.md", ["Intro"]);
+        expect(result.outline).toBeUndefined();
+    });
+
+    it("numbers outline index per duplicate heading name, not by position", async () => {
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/doc.md": "# Notes\na\n# Intro\nb\n# Notes\nc",
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/doc.md",
+            makeCache(
+                [
+                    { text: "Notes", level: 1, start: 0,  end: 7,  line: 0 },
+                    { text: "Intro", level: 1, start: 10, end: 17, line: 2 },
+                    { text: "Notes", level: 1, start: 20, end: 27, line: 4 },
+                ],
+                [],
+            ),
+        );
+        const result = await handler.readNote("notes/doc.md");
+        expect(result.outline).toEqual([
+            { text: "Notes", level: 1, index: 0 },
+            { text: "Intro", level: 1, index: 0 },
+            { text: "Notes", level: 1, index: 1 },
+        ]);
+    });
+
+    it("includes frontmatter when present", async () => {
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/fm.md": "---\nstatus: active\n---\nbody",
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/fm.md",
+            { frontmatter: { status: "active" } } as CachedMetadata,
+        );
+        const result = await handler.readNote("notes/fm.md");
+        expect(result.frontmatter).toEqual({ status: "active" });
+    });
+
+    describe("embeds", () => {
+        function makeEmbedsHandler() {
+            const files = {
+                "notes/main.md":
+                    "main\n![[img.png]]\n![[note-b.md]]\n" +
+                    "![[note-b.md#Section]]\n![[missing.md]]\n![[secret.md]]",
+                "notes/img.png": "",
+                "notes/note-b.md": "# Section\ncontent",
+                "notes/secret.md": "secret content",
+            };
+            const settings: CurrentSettings = {
+                ...openSettings,
+                pathACL: () => ({
+                    forbidden: ["notes/secret.md"],
+                    readOnly: [],
+                    writable: [],
+                }),
+            };
+            const { handler, app } = makeHandler(settings, files);
+            const mc = app.metadataCache as unknown as MetadataCache;
+
+            mc.setCache__("notes/main.md", {
+                embeds: [
+                    {
+                        link: "img.png",
+                        displayText: "img.png",
+                        original: "![[img.png]]",
+                        position: {
+                            start: { offset: 5, line: 1, col: 0 },
+                            end: { offset: 17, line: 1, col: 12 },
+                        },
+                    },
+                    {
+                        link: "note-b.md",
+                        displayText: "note-b.md",
+                        original: "![[note-b.md]]",
+                        position: {
+                            start: { offset: 18, line: 2, col: 0 },
+                            end: { offset: 33, line: 2, col: 15 },
+                        },
+                    },
+                    {
+                        link: "note-b.md#Section",
+                        displayText: "note-b.md#Section",
+                        original: "![[note-b.md#Section]]",
+                        position: {
+                            start: { offset: 34, line: 3, col: 0 },
+                            end: { offset: 57, line: 3, col: 23 },
+                        },
+                    },
+                    {
+                        link: "missing.md",
+                        displayText: "missing.md",
+                        original: "![[missing.md]]",
+                        position: {
+                            start: { offset: 58, line: 4, col: 0 },
+                            end: { offset: 74, line: 4, col: 16 },
+                        },
+                    },
+                    {
+                        link: "secret.md",
+                        displayText: "secret.md",
+                        original: "![[secret.md]]",
+                        position: {
+                            start: { offset: 75, line: 5, col: 0 },
+                            end: { offset: 90, line: 5, col: 15 },
+                        },
+                    },
+                ],
+            } as CachedMetadata);
+
+            return { handler, app };
+        }
+
+        it("lists resolved embeds, including non-markdown, with subpaths", async () => {
+            const { handler } = makeEmbedsHandler();
+            const result = await handler.readNote("notes/main.md");
+            expect(result.embeds).toEqual([
+                { path: "notes/img.png" },
+                { path: "notes/note-b.md" },
+                { path: "notes/note-b.md", subpath: "Section" },
+            ]);
+        });
+
+        it("omits broken embeds", async () => {
+            const { handler } = makeEmbedsHandler();
+            const result = await handler.readNote("notes/main.md");
+            expect(result.embeds).not.toContainEqual(
+                expect.objectContaining({ path: expect.stringContaining("missing") }),
+            );
+        });
+
+        it("omits embeds the caller lacks ACL read access to", async () => {
+            const { handler } = makeEmbedsHandler();
+            const result = await handler.readNote("notes/main.md");
+            expect(result.embeds).not.toContainEqual(
+                expect.objectContaining({ path: "notes/secret.md" }),
+            );
+        });
+    });
+
+    describe("links", () => {
+        function makeLinksHandler() {
+            const files = {
+                "notes/main.md":
+                    "main [[note-b.md]] [[note-b.md#Section]] " +
+                    "[[missing.md]] [[secret.md]]",
+                "notes/note-b.md": "# Section\ncontent",
+                "notes/secret.md": "secret content",
+            };
+            const settings: CurrentSettings = {
+                ...openSettings,
+                pathACL: () => ({
+                    forbidden: ["notes/secret.md"],
+                    readOnly: [],
+                    writable: [],
+                }),
+            };
+            const { handler, app } = makeHandler(settings, files);
+            const mc = app.metadataCache as unknown as MetadataCache;
+
+            mc.setCache__("notes/main.md", {
+                links: [
+                    {
+                        link: "note-b.md",
+                        displayText: "note-b.md",
+                        original: "[[note-b.md]]",
+                        position: {
+                            start: { offset: 5, line: 0, col: 5 },
+                            end: { offset: 19, line: 0, col: 19 },
+                        },
+                    },
+                    {
+                        link: "note-b.md#Section",
+                        displayText: "note-b.md#Section",
+                        original: "[[note-b.md#Section]]",
+                        position: {
+                            start: { offset: 20, line: 0, col: 20 },
+                            end: { offset: 42, line: 0, col: 42 },
+                        },
+                    },
+                    {
+                        link: "missing.md",
+                        displayText: "missing.md",
+                        original: "[[missing.md]]",
+                        position: {
+                            start: { offset: 43, line: 0, col: 43 },
+                            end: { offset: 58, line: 0, col: 58 },
+                        },
+                    },
+                    {
+                        link: "secret.md",
+                        displayText: "secret.md",
+                        original: "[[secret.md]]",
+                        position: {
+                            start: { offset: 59, line: 0, col: 59 },
+                            end: { offset: 73, line: 0, col: 73 },
+                        },
+                    },
+                ],
+            } as CachedMetadata);
+
+            return { handler, app };
+        }
+
+        it("lists resolved links with subpaths", async () => {
+            const { handler } = makeLinksHandler();
+            const result = await handler.readNote("notes/main.md");
+            expect(result.links).toEqual([
+                { path: "notes/note-b.md" },
+                { path: "notes/note-b.md", subpath: "Section" },
+            ]);
+        });
+
+        it("omits broken links", async () => {
+            const { handler } = makeLinksHandler();
+            const result = await handler.readNote("notes/main.md");
+            expect(result.links).not.toContainEqual(
+                expect.objectContaining({ path: expect.stringContaining("missing") }),
+            );
+        });
+
+        it("omits links the caller lacks ACL read access to", async () => {
+            const { handler } = makeLinksHandler();
+            const result = await handler.readNote("notes/main.md");
+            expect(result.links).not.toContainEqual(
+                expect.objectContaining({ path: "notes/secret.md" }),
+            );
+        });
+    });
+
+    describe("excludePatterns", () => {
+        function makeExcludeHandler() {
+            const files = {
+                "notes/main.md":
+                    "main ![[keep.md]] ![[skip.md]] [[keep-link.md]] " +
+                    "[[skip-link.md]]",
+                "notes/keep.md": "keep content",
+                "notes/skip.md": "skip content",
+                "notes/keep-link.md": "keep link content",
+                "notes/skip-link.md": "skip link content",
+            };
+            const { handler, app } = makeHandler(openSettings, files);
+            const mc = app.metadataCache as unknown as MetadataCache;
+
+            mc.setCache__("notes/main.md", {
+                embeds: [
+                    {
+                        link: "keep.md",
+                        displayText: "keep.md",
+                        original: "![[keep.md]]",
+                        position: {
+                            start: { offset: 5, line: 0, col: 5 },
+                            end: { offset: 18, line: 0, col: 18 },
+                        },
+                    },
+                    {
+                        link: "skip.md",
+                        displayText: "skip.md",
+                        original: "![[skip.md]]",
+                        position: {
+                            start: { offset: 19, line: 0, col: 19 },
+                            end: { offset: 32, line: 0, col: 32 },
+                        },
+                    },
+                ],
+                links: [
+                    {
+                        link: "keep-link.md",
+                        displayText: "keep-link.md",
+                        original: "[[keep-link.md]]",
+                        position: {
+                            start: { offset: 33, line: 0, col: 33 },
+                            end: { offset: 50, line: 0, col: 50 },
+                        },
+                    },
+                    {
+                        link: "skip-link.md",
+                        displayText: "skip-link.md",
+                        original: "[[skip-link.md]]",
+                        position: {
+                            start: { offset: 51, line: 0, col: 51 },
+                            end: { offset: 68, line: 0, col: 68 },
+                        },
+                    },
+                ],
+            } as CachedMetadata);
+
+            return { handler, app };
+        }
+
+        it("excludes matching entries from embeds and links", async () => {
+            const { handler } = makeExcludeHandler();
+            const result = await handler.readNote(
+                "notes/main.md",
+                undefined,
+                false,
+                undefined,
+                ["skip"],
+            );
+            expect(result.embeds).toEqual([{ path: "notes/keep.md" }]);
+            expect(result.links).toEqual([{ path: "notes/keep-link.md" }]);
+        });
+    });
+
+    describe("metadataOnly", () => {
+        it("returns embeds/outline/frontmatter without content", async () => {
+            const { handler, app } = makeHandler(openSettings, {
+                "notes/doc.md": "# Intro\nhello",
+            });
+            const mc = app.metadataCache as unknown as MetadataCache;
+            mc.setCache__("notes/doc.md", {
+                ...makeCache(
+                    [{ text: "Intro", level: 1, start: 0, end: 8, line: 0 }],
+                    [],
+                ),
+                frontmatter: { status: "active" },
+            } as CachedMetadata);
+
+            const result = await handler.readNote(
+                "notes/doc.md",
+                undefined,
+                true,
+            );
+            expect(result.content).toBeUndefined();
+            expect(result.outline).toEqual([
+                { text: "Intro", level: 1, index: 0 },
+            ]);
+            expect(result.frontmatter).toEqual({ status: "active" });
+        });
+
+        it("does not read file content when metadataOnly is true", async () => {
+            const { handler, app } = makeHandler(openSettings, {
+                "notes/doc.md": "hello",
+            });
+            const spy = vi.spyOn(app.vault, "cachedRead");
+            await handler.readNote("notes/doc.md", undefined, true);
+            expect(spy).not.toHaveBeenCalled();
+        });
+
+        it("ignores sections when metadataOnly is true", async () => {
+            const { handler, app } = makeHandler(openSettings, {
+                "notes/doc.md": "# Intro\nhello\n# Details\nmore",
+            });
+            (app.metadataCache as unknown as MetadataCache).setCache__(
+                "notes/doc.md",
+                makeCache(
+                    [
+                        { text: "Intro", level: 1, start: 0, end: 8, line: 0 },
+                        { text: "Details", level: 1, start: 14, end: 23, line: 2 },
+                    ],
+                    [],
+                ),
+            );
+            const result = await handler.readNote(
+                "notes/doc.md",
+                ["Intro"],
+                true,
+            );
+            expect(result.outline).toEqual([
+                { text: "Intro", level: 1, index: 0 },
+                { text: "Details", level: 1, index: 0 },
+            ]);
+        });
+    });
 });
 
 describe("NoteHandler.createNote", () => {
@@ -261,9 +672,88 @@ describe("NoteHandler.appendToNote", () => {
             handler.appendToNote("notes/log.md", "x", "Missing Heading"),
         ).rejects.toThrow("Heading not found");
     });
+
+    it("matches heading text case-insensitively", async () => {
+        // "# Tasks\n- item 1"
+        //  0      7 8
+        const content = "# Tasks\n- item 1";
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/log.md": content,
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/log.md",
+            makeCache(
+                [{ text: "Tasks", level: 1, start: 0, end: 7, line: 0 }],
+                [
+                    { type: "heading", start: 0, end: 7,  line: 0 },
+                    { type: "list",    start: 8, end: 16, line: 1 },
+                ],
+            ),
+        );
+        await handler.appendToNote("notes/log.md", "- item 2", "TASKS");
+        const result = await handler.readNote("notes/log.md");
+        expect(result.content).toBe("# Tasks\n- item 1\n- item 2");
+    });
+
+    describe("with a duplicate heading", () => {
+        // "# Notes\nfirst\n# Notes\nsecond"
+        //  0      7 8    13 14    21 22
+        const content = "# Notes\nfirst\n# Notes\nsecond";
+
+        function makeDuplicateHandler() {
+            const { handler, app } = makeHandler(openSettings, {
+                "notes/log.md": content,
+            });
+            (app.metadataCache as unknown as MetadataCache).setCache__(
+                "notes/log.md",
+                makeCache(
+                    [
+                        { text: "Notes", level: 1, start: 0,  end: 7,  line: 0 },
+                        { text: "Notes", level: 1, start: 14, end: 21, line: 2 },
+                    ],
+                    [
+                        { type: "heading",   start: 0,  end: 7,  line: 0 },
+                        { type: "paragraph", start: 8,  end: 13, line: 1 },
+                        { type: "heading",   start: 14, end: 21, line: 2 },
+                        { type: "paragraph", start: 22, end: 28, line: 3 },
+                    ],
+                ),
+            );
+            return handler;
+        }
+
+        it("throws when heading matches more than one occurrence", async () => {
+            const handler = makeDuplicateHandler();
+            await expect(
+                handler.appendToNote("notes/log.md", "x", "Notes"),
+            ).rejects.toThrow('Heading "Notes" is ambiguous (2 matches)');
+        });
+
+        it("names headingIndex, not other tools' params, in the ambiguity error", async () => {
+            const handler = makeDuplicateHandler();
+            await expect(
+                handler.appendToNote("notes/log.md", "x", "Notes"),
+            ).rejects.toThrow("pass headingIndex");
+        });
+
+        it("appends after the occurrence selected via headingIndex", async () => {
+            const handler = makeDuplicateHandler();
+            await handler.appendToNote(
+                "notes/log.md",
+                "added",
+                "Notes",
+                "\n",
+                1,
+            );
+            const result = await handler.readNote("notes/log.md");
+            expect(result.content).toBe(
+                "# Notes\nfirst\n# Notes\nsecond\nadded",
+            );
+        });
+    });
 });
 
-describe("NoteHandler.readNote with sections", () => {
+describe("NoteHandler.readNote with headings", () => {
     it("returns only the requested section", async () => {
         // "# Introduction\n\nhello\n\n# Details\n\nworld"
         //  0             14 15 16 21 22 23     32 33 34
@@ -325,7 +815,7 @@ describe("NoteHandler.readNote with sections", () => {
         expect(result.content).not.toContain("world");
     });
 
-    it("returns empty string when section not found", async () => {
+    it("throws when a requested section heading does not exist", async () => {
         // "# Intro\n\nhello"
         //  0      7 8 9
         const content = "# Intro\n\nhello";
@@ -342,8 +832,79 @@ describe("NoteHandler.readNote with sections", () => {
                 ],
             ),
         );
-        const result = await handler.readNote("notes/doc.md", ["Missing"]);
-        expect(result.content).toBe("");
+        await expect(
+            handler.readNote("notes/doc.md", ["Missing"]),
+        ).rejects.toThrow("Heading not found: Missing");
+    });
+
+    describe("with duplicate heading names", () => {
+        // "# Notes\nfirst\n# Notes\nsecond"
+        //  0      7 8    13 14    21 22
+        const content = "# Notes\nfirst\n# Notes\nsecond";
+
+        function makeDuplicateHandler() {
+            const { handler, app } = makeHandler(openSettings, {
+                "notes/doc.md": content,
+            });
+            (app.metadataCache as unknown as MetadataCache).setCache__(
+                "notes/doc.md",
+                makeCache(
+                    [
+                        { text: "Notes", level: 1, start: 0,  end: 7,  line: 0 },
+                        { text: "Notes", level: 1, start: 14, end: 21, line: 2 },
+                    ],
+                    [],
+                ),
+            );
+            return handler;
+        }
+
+        it("throws when a name matches more than one heading", async () => {
+            const handler = makeDuplicateHandler();
+            await expect(
+                handler.readNote("notes/doc.md", ["Notes"]),
+            ).rejects.toThrow('Heading "Notes" is ambiguous (2 matches)');
+        });
+
+        it("names headingIndexes, not other tools' params, in the ambiguity error", async () => {
+            const handler = makeDuplicateHandler();
+            await expect(
+                handler.readNote("notes/doc.md", ["Notes"]),
+            ).rejects.toThrow("pass headingIndexes");
+        });
+
+        it("resolves to the targeted occurrence via headingIndexes", async () => {
+            const handler = makeDuplicateHandler();
+            const first = await handler.readNote(
+                "notes/doc.md",
+                ["Notes"],
+                false,
+                { Notes: 0 },
+            );
+            expect(first.content).toContain("first");
+            expect(first.content).not.toContain("second");
+
+            const second = await handler.readNote(
+                "notes/doc.md",
+                ["Notes"],
+                false,
+                { Notes: 1 },
+            );
+            expect(second.content).toContain("second");
+            expect(second.content).not.toContain("first");
+        });
+
+        it("returns multiple occurrences of the same name via an index array", async () => {
+            const handler = makeDuplicateHandler();
+            const result = await handler.readNote(
+                "notes/doc.md",
+                ["Notes"],
+                false,
+                { Notes: [0, 1] },
+            );
+            expect(result.content).toContain("first");
+            expect(result.content).toContain("second");
+        });
     });
 });
 
@@ -422,116 +983,55 @@ describe("NoteHandler.patchNote", () => {
             handler.patchNote("notes/doc.md", 'She said "hello"', "x"),
         ).rejects.toThrow("Text not found in note");
     });
-});
 
-describe("NoteHandler.readNoteWithEmbeds", () => {
-    // Vault layout:
-    //   main.md        — embeds allowed.md, forbidden.md, section-note.md#Target
-    //                    links to linked.md
-    //   allowed.md     — embeds depth2.md (depth 1)
-    //   depth2.md      — embeds depth3.md (depth 2, at MAX_DEPTH limit)
-    //   depth3.md      — would be depth 3, never followed
-    //   forbidden.md   — ACL blocked, silently skipped
-    //   section-note.md — two headings; only #Target content appears via subpath embed
-    //   linked.md      — only included when includeLinks: true
+    describe("with a duplicate heading", () => {
+        // "# Notes\ntarget\n# Notes\ntarget"
+        //  0      7 8     14 15   22 23
+        const content = "# Notes\ntarget\n# Notes\ntarget";
 
-    function makeEmbedHandler() {
-        const files = {
-            "main.md":
-                "main content\n" +
-                "![[allowed.md]]\n" +
-                "![[forbidden.md]]\n" +
-                "![[section-note.md#Target]]\n" +
-                "[[linked.md]]",
-            "allowed.md":       "allowed content\n![[depth2.md]]",
-            "depth2.md":        "depth2 content\n![[depth3.md]]",
-            "depth3.md":        "depth3 content",
-            "forbidden.md":     "forbidden content",
-            "section-note.md":  "# Introduction\nsome intro\n# Target\ntarget content",
-            "linked.md":        "linked content",
-        };
-        const settings: CurrentSettings = {
-            ...openSettings,
-            pathACL: () => ({
-                forbidden: ["forbidden.md"],
-                readOnly: [],
-                writable: [],
-            }),
-        };
-        const { handler, app } = makeHandler(settings, files);
-        const mc = app.metadataCache as unknown as MetadataCache;
+        function makeDuplicateHandler() {
+            const { handler, app } = makeHandler(openSettings, {
+                "notes/doc.md": content,
+            });
+            (app.metadataCache as unknown as MetadataCache).setCache__(
+                "notes/doc.md",
+                makeCache(
+                    [
+                        { text: "Notes", level: 1, start: 0,  end: 7,  line: 0 },
+                        { text: "Notes", level: 1, start: 15, end: 22, line: 2 },
+                    ],
+                    [],
+                ),
+            );
+            return handler;
+        }
 
-        // main.md: embeds + one link
-        mc.setCache__("main.md", {
-            embeds: [
-                { link: "allowed.md",             displayText: "allowed.md",            original: "![[allowed.md]]",            position: { start: { offset: 13, line: 1, col: 0 }, end: { offset: 27, line: 1, col: 14 } } },
-                { link: "forbidden.md",           displayText: "forbidden.md",          original: "![[forbidden.md]]",          position: { start: { offset: 29, line: 2, col: 0 }, end: { offset: 45, line: 2, col: 16 } } },
-                { link: "section-note.md#Target", displayText: "section-note.md#Target",original: "![[section-note.md#Target]]",position: { start: { offset: 47, line: 3, col: 0 }, end: { offset: 73, line: 3, col: 26 } } },
-            ],
-            links: [
-                { link: "linked.md", displayText: "linked.md", original: "[[linked.md]]", position: { start: { offset: 75, line: 4, col: 0 }, end: { offset: 87, line: 4, col: 12 } } },
-            ],
+        it("throws when section matches more than one heading", async () => {
+            const handler = makeDuplicateHandler();
+            await expect(
+                handler.patchNote("notes/doc.md", "target", "x", "Notes"),
+            ).rejects.toThrow('Heading "Notes" is ambiguous (2 matches)');
         });
 
-        // allowed.md: embeds depth2.md
-        mc.setCache__("allowed.md", {
-            embeds: [
-                { link: "depth2.md", displayText: "depth2.md", original: "![[depth2.md]]", position: { start: { offset: 16, line: 1, col: 0 }, end: { offset: 29, line: 1, col: 13 } } },
-            ],
+        it("names headingIndex, not other tools' params, in the ambiguity error", async () => {
+            const handler = makeDuplicateHandler();
+            await expect(
+                handler.patchNote("notes/doc.md", "target", "x", "Notes"),
+            ).rejects.toThrow("pass headingIndex to select");
         });
 
-        // depth2.md: embeds depth3.md — at MAX_DEPTH, not followed
-        mc.setCache__("depth2.md", {
-            embeds: [
-                { link: "depth3.md", displayText: "depth3.md", original: "![[depth3.md]]", position: { start: { offset: 15, line: 1, col: 0 }, end: { offset: 28, line: 1, col: 13 } } },
-            ],
+        it("patches the occurrence selected via headingIndex", async () => {
+            const handler = makeDuplicateHandler();
+            await handler.patchNote(
+                "notes/doc.md",
+                "target",
+                "patched",
+                "Notes",
+                1,
+            );
+            const result = await handler.readNote("notes/doc.md");
+            expect(result.content).toBe("# Notes\ntarget\n# Notes\npatched");
         });
-
-        // section-note.md: headings needed for subpath extraction
-        // "# Introduction\nsome intro\n# Target\ntarget content"
-        //  0              14 15       25 26     34 35
-        mc.setCache__("section-note.md", makeCache(
-            [
-                { text: "Introduction", level: 1, start: 0,  end: 14, line: 0 },
-                { text: "Target",       level: 1, start: 26, end: 34, line: 2 },
-            ],
-            [
-                { type: "heading",   start: 0,  end: 14, line: 0 },
-                { type: "paragraph", start: 15, end: 25, line: 1 },
-                { type: "heading",   start: 26, end: 34, line: 2 },
-                { type: "paragraph", start: 35, end: 48, line: 3 },
-            ],
-        ));
-
-        return { handler, app };
-    }
-
-    it("expands embeds and respects ACL, depth limit, and subpath", async () => {
-        const { handler } = makeEmbedHandler();
-        const { content } = await handler.readNoteWithEmbeds("main.md");
-
-        expect(content).toContain("main content");
-        // allowed.md and its transitive embed are included
-        expect(content).toContain("allowed content");
-        expect(content).toContain("depth2 content");
-        // depth3 is beyond MAX_DEPTH — not included
-        expect(content).not.toContain("depth3 content");
-        // forbidden is silently skipped
-        expect(content).not.toContain("forbidden content");
-        // subpath embed: only Target section, not Introduction
-        expect(content).toContain("target content");
-        expect(content).not.toContain("some intro");
-        // linked.md excluded when includeLinks is false (default)
-        expect(content).not.toContain("linked content");
-    });
-
-    it("includes linked notes when includeLinks is true", async () => {
-        const { handler } = makeEmbedHandler();
-        const { content } = await handler.readNoteWithEmbeds(
-            "main.md",
-            undefined,
-            true,
-        );
-        expect(content).toContain("linked content");
     });
 });
+

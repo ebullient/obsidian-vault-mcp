@@ -1,17 +1,16 @@
-import { type App, normalizePath, TFile } from "obsidian";
+import {
+    type App,
+    type CachedMetadata,
+    type HeadingCache,
+    normalizePath,
+    TFile,
+} from "obsidian";
 import type { CurrentSettings, Logger } from "./@types/settings";
 import type { PathACLChecker } from "./vaultasmcp-PathACL";
 import type { TemplateHandler } from "./vaultasmcp-TemplateHandler";
 
-// Limit embed expansion depth to prevent performance issues and circular refs
-const MAX_DEPTH = 2;
-type EmbeddedLink = {
-    subpaths: Set<string>; // headings, blockrefs
-    hasFullReference: boolean;
-    file: TFile | null; // null for unresolved links
-    depth: number;
-};
-type EmbeddedNotes = Map<string, EmbeddedLink>;
+type LinkRef = { path: string; subpath?: string };
+type OutlineEntry = { text: string; level: number; index: number };
 
 /**
  * Handles all note CRUD operations with ACL enforcement
@@ -47,23 +46,193 @@ export class NoteHandler {
     }
 
     /**
-     * Read a note's content
+     * Read a note's content, plus its links/embeds/outline/frontmatter.
      * ACL: Requires read access
      */
     async readNote(
         path: string,
-        sections?: string[],
-    ): Promise<{ content: string }> {
+        headings?: string[],
+        metadataOnly = false,
+        headingIndexes?: Record<string, number | number[]>,
+        excludePatterns?: string[],
+    ): Promise<{
+        content?: string;
+        embeds?: LinkRef[];
+        links?: LinkRef[];
+        outline?: OutlineEntry[];
+        frontmatter?: Record<string, unknown>;
+    }> {
         const file = this.getFileWithAclCheck(path);
+        const cache = this.app.metadataCache.getFileCache(file);
+        const compiledPatterns = this.compileExcludePatterns(
+            excludePatterns || [],
+        );
+        const embeds = this.getDirectLinkRefs(
+            file,
+            cache?.embeds,
+            compiledPatterns,
+        );
+        const links = this.getDirectLinkRefs(
+            file,
+            cache?.links,
+            compiledPatterns,
+        );
+        const frontmatter = cache?.frontmatter ?? undefined;
+
+        if (metadataOnly) {
+            return {
+                embeds,
+                links,
+                outline: this.getOutline(cache),
+                frontmatter,
+            };
+        }
+
         const content = await this.app.vault.cachedRead(file);
 
-        if (!sections || sections.length === 0) {
-            return { content };
+        if (headings && headings.length > 0) {
+            return {
+                content: this.extractSections(
+                    file,
+                    content,
+                    headings,
+                    headingIndexes,
+                ),
+                embeds,
+                links,
+                frontmatter,
+            };
         }
 
         return {
-            content: this.extractSections(file, content, sections),
+            content,
+            embeds,
+            links,
+            outline: this.getOutline(cache),
+            frontmatter,
         };
+    }
+
+    /**
+     * Resolve a heading by name (case-insensitive) to its index in
+     * cache.headings. Throws if the name matches more than once, unless
+     * `index` (0-based, among same-named matches) disambiguates which
+     * occurrence to use. `paramName` names the caller's disambiguation
+     * parameter (e.g. "headingIndex") so error messages point at the
+     * right one for the tool that's actually being called.
+     */
+    private resolveHeadingIndex(
+        headings: HeadingCache[],
+        name: string,
+        index: number | undefined,
+        paramName: string,
+    ): number {
+        const normalizedName = this.normalizeHeading(name);
+        const matches: number[] = [];
+        headings.forEach((h, i) => {
+            if (this.normalizeHeading(h.heading) === normalizedName) {
+                matches.push(i);
+            }
+        });
+
+        if (matches.length === 0) {
+            throw new Error(`Heading not found: ${name}`);
+        }
+
+        if (index !== undefined) {
+            if (index < 0 || index >= matches.length) {
+                throw new Error(
+                    `Heading index ${index} out of range for "${name}" ` +
+                        `(${matches.length} match(es), valid range ` +
+                        `0-${matches.length - 1})`,
+                );
+            }
+            return matches[index];
+        }
+
+        if (matches.length > 1) {
+            throw new Error(
+                `Heading "${name}" is ambiguous (${matches.length} ` +
+                    "matches). Use metadataOnly to inspect outline " +
+                    `indices, then pass ${paramName} to select a ` +
+                    "specific occurrence.",
+            );
+        }
+
+        return matches[0];
+    }
+
+    /**
+     * Direct (depth-1) link/embed targets of a note, resolved to vault
+     * paths. Broken/unresolved targets and targets the caller lacks
+     * read access to are silently omitted. `entries` is `cache.embeds`
+     * or `cache.links`; `excludePatterns` matches against
+     * `[display](link)` text, same as embed expansion used to.
+     */
+    private getDirectLinkRefs(
+        sourceFile: TFile,
+        entries: { link: string; displayText?: string }[] | undefined,
+        excludePatterns: RegExp[],
+    ): LinkRef[] | undefined {
+        if (!entries?.length) {
+            return undefined;
+        }
+
+        const seen = new Set<string>();
+        const result: LinkRef[] = [];
+
+        for (const entry of entries) {
+            if (this.shouldExcludeLink(entry, excludePatterns)) {
+                continue;
+            }
+            const { path, subpath } = this.parseLinkReference(entry.link);
+            const targetFile = this.app.metadataCache.getFirstLinkpathDest(
+                path,
+                sourceFile.path,
+            );
+            if (!targetFile) {
+                continue;
+            }
+            try {
+                this.aclChecker.checkReadAccess(targetFile.path);
+            } catch {
+                continue;
+            }
+
+            const key = subpath
+                ? `${targetFile.path}#${subpath}`
+                : targetFile.path;
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            result.push(
+                subpath
+                    ? { path: targetFile.path, subpath }
+                    : { path: targetFile.path },
+            );
+        }
+
+        return result.length ? result : undefined;
+    }
+
+    /**
+     * Heading outline for a note. `index` is the 0-based occurrence
+     * count among same-named headings (matches resolveHeadingIndex's
+     * numbering), so a caller can pass it back to disambiguate.
+     */
+    private getOutline(
+        cache: CachedMetadata | null,
+    ): OutlineEntry[] | undefined {
+        if (!cache?.headings?.length) {
+            return undefined;
+        }
+        const countByName = new Map<string, number>();
+        return cache.headings.map((h) => {
+            const key = this.normalizeHeading(h.heading);
+            const index = countByName.get(key) ?? 0;
+            countByName.set(key, index + 1);
+            return { text: h.heading, level: h.level, index };
+        });
     }
 
     /**
@@ -146,6 +315,7 @@ export class NoteHandler {
         content: string,
         heading?: string,
         separator = "\n",
+        headingIndex?: number,
     ): Promise<{ path: string }> {
         const file = this.getFileWithAclCheck(path, true);
 
@@ -160,10 +330,11 @@ export class NoteHandler {
 
             // Heading-based insertion
             await this.app.vault.process(file, (data) => {
-                const insertOffset = this.findHeadingEndOffset(file, heading);
-                if (insertOffset === undefined) {
-                    throw new Error(`Heading not found: ${heading}`);
-                }
+                const insertOffset = this.findHeadingEndOffset(
+                    file,
+                    heading,
+                    headingIndex,
+                );
 
                 const before = data.slice(0, insertOffset);
                 const after = data.slice(insertOffset);
@@ -183,15 +354,16 @@ export class NoteHandler {
 
     /**
      * Patch a note by replacing an exact string with new text.
-     * Optionally scoped to a named section (heading + its content).
-     * Errors if old_text is not found, or found more than once.
+     * Optionally scoped to a named heading's section (heading + its
+     * content). Errors if old_text is not found, or found more than once.
      * ACL: Requires write access
      */
     async patchNote(
         path: string,
         oldText: string,
         newText: string,
-        section?: string,
+        heading?: string,
+        headingIndex?: number,
     ): Promise<{ path: string }> {
         if (!path) throw new Error("path is required");
         if (!oldText) throw new Error("old_text is required");
@@ -207,7 +379,7 @@ export class NoteHandler {
             let searchIn = normalizedData;
             let searchOffset = 0;
 
-            if (section) {
+            if (heading) {
                 const cache = this.app.metadataCache.getFileCache(file);
                 if (!cache?.headings) {
                     throw new Error(
@@ -215,19 +387,17 @@ export class NoteHandler {
                             "indexed yet. Retry in a moment.",
                     );
                 }
-                const normalizedSection = this.normalizeHeading(section);
-                const headingIndex = cache.headings.findIndex(
-                    (h) =>
-                        this.normalizeHeading(h.heading) === normalizedSection,
+                const resolvedIndex = this.resolveHeadingIndex(
+                    cache.headings,
+                    heading,
+                    headingIndex,
+                    "headingIndex",
                 );
-                if (headingIndex === -1) {
-                    throw new Error(`Section not found: ${section}`);
-                }
                 const start =
-                    cache.headings[headingIndex].position.start.offset;
+                    cache.headings[resolvedIndex].position.start.offset;
                 const end = this.findSectionEnd(
                     cache.headings,
-                    headingIndex,
+                    resolvedIndex,
                     normalizedData.length,
                 );
                 searchIn = normalizedData.substring(start, end);
@@ -237,15 +407,15 @@ export class NoteHandler {
             const idx = searchIn.indexOf(normalizedOldText);
             if (idx === -1) {
                 throw new Error(
-                    section
-                        ? `Text not found in section "${section}"`
+                    heading
+                        ? `Text not found in section "${heading}"`
                         : "Text not found in note",
                 );
             }
             if (searchIn.indexOf(normalizedOldText, idx + 1) !== -1) {
                 throw new Error(
-                    section
-                        ? `Text appears more than once in section "${section}"; ` +
+                    heading
+                        ? `Text appears more than once in section "${heading}"; ` +
                               "provide more context to make it unique"
                         : "Text appears more than once in note; " +
                               "provide more context to make it unique",
@@ -339,18 +509,24 @@ export class NoteHandler {
     private findHeadingEndOffset(
         file: TFile,
         heading: string,
-    ): number | undefined {
+        headingIndex?: number,
+    ): number {
         const cache = this.app.metadataCache.getFileCache(file);
         if (!cache?.sections || !cache.headings) {
-            return undefined;
+            throw new Error(
+                "Heading lookup unavailable: note metadata not " +
+                    "indexed yet. Retry in a moment.",
+            );
         }
 
         const sections = cache.sections;
-        const foundHeading = cache.headings.find((h) => h.heading === heading);
-
-        if (!foundHeading) {
-            return undefined;
-        }
+        const resolvedIndex = this.resolveHeadingIndex(
+            cache.headings,
+            heading,
+            headingIndex,
+            "headingIndex",
+        );
+        const foundHeading = cache.headings[resolvedIndex];
 
         // Find the section for this heading
         const foundSectionIndex = sections.findIndex(
@@ -361,7 +537,7 @@ export class NoteHandler {
         );
 
         if (foundSectionIndex === -1) {
-            return undefined;
+            throw new Error(`Heading not found: ${heading}`);
         }
 
         const restSections = sections.slice(foundSectionIndex + 1);
@@ -381,30 +557,6 @@ export class NoteHandler {
             sections[foundSectionIndex];
 
         return lastSection.position.end.offset;
-    }
-
-    /**
-     * Read note with embedded content expanded inline
-     * ACL: Requires read access to main note and all embedded files
-     */
-    async readNoteWithEmbeds(
-        path: string,
-        excludePatterns?: string[],
-        includeLinks = false,
-    ): Promise<{ content: string }> {
-        const file = this.getFileWithAclCheck(path);
-        const content = await this.app.vault.cachedRead(file);
-        const compiledPatterns = this.compileExcludePatterns(
-            excludePatterns || [],
-        );
-        const expandedContent = await this.expandLinkedFiles(
-            file,
-            content,
-            compiledPatterns,
-            includeLinks,
-        );
-
-        return { content: expandedContent };
     }
 
     private compileExcludePatterns(patterns: string[]): RegExp[] {
@@ -442,220 +594,6 @@ export class NoteHandler {
     }
 
     /**
-     * Expand linked/embedded files inline with the main content
-     */
-    private async expandLinkedFiles(
-        sourceFile: TFile,
-        content: string,
-        excludePatterns: RegExp[] = [],
-        includeLinks = false,
-    ): Promise<string> {
-        const fileCache = this.app.metadataCache.getFileCache(sourceFile);
-        if (!fileCache) {
-            return content;
-        }
-
-        // Phase 1: Collect all linked files via breadth-first traversal
-        const linkedFiles = this.collectLinkedFiles(
-            sourceFile,
-            excludePatterns,
-            includeLinks,
-        );
-
-        // Remove source file from expansion (already in main content)
-        linkedFiles.delete(sourceFile.path);
-
-        // Phase 2: Expand content from collected files
-        const expandedContent = await this.expandCollectedContent(linkedFiles);
-
-        if (expandedContent.length) {
-            return (
-                content +
-                "\n----- EMBEDDED/LINKED CONTENT -----\n" +
-                expandedContent.join("\n")
-            );
-        }
-        return content;
-    }
-
-    /**
-     * Phase 1: Collect linked files via breadth-first traversal
-     * Respects MAX_DEPTH and ACL permissions
-     */
-    private collectLinkedFiles(
-        sourceFile: TFile,
-        excludePatterns: RegExp[],
-        includeLinks: boolean,
-    ): EmbeddedNotes {
-        const seenLinks: EmbeddedNotes = new Map();
-        const fileQueue: EmbeddedLink[] = [];
-
-        // Track source file to prevent duplicates
-        const origin = {
-            hasFullReference: true,
-            subpaths: new Set<string>(),
-            file: sourceFile,
-            depth: 0,
-        };
-        seenLinks.set(sourceFile.path, origin);
-        fileQueue.push(origin);
-
-        // Process queue breadth-first
-        let embeddedLink = fileQueue.shift();
-        while (embeddedLink) {
-            // Skip if file wasn't found (null) or max depth reached
-            if (!embeddedLink.file || embeddedLink.depth >= MAX_DEPTH) {
-                embeddedLink = fileQueue.shift();
-                continue;
-            }
-
-            const fileCache = this.app.metadataCache.getFileCache(
-                embeddedLink.file,
-            );
-            if (fileCache) {
-                // Process both links and embeds
-                const allLinks = [
-                    ...(includeLinks ? fileCache.links || [] : []),
-                    ...(fileCache.embeds || []),
-                ].filter((link) => link);
-
-                for (const cachedLink of allLinks) {
-                    // Skip if link matches exclusion patterns
-                    if (this.shouldExcludeLink(cachedLink, excludePatterns)) {
-                        continue;
-                    }
-
-                    // Skip duplicate unresolved links
-                    const linkKey = cachedLink.link;
-                    if (seenLinks.has(linkKey)) {
-                        continue;
-                    }
-
-                    // Parse link to extract path and subpath
-                    const { path, subpath } = this.parseLinkReference(
-                        cachedLink.link,
-                    );
-                    const targetFile =
-                        this.app.metadataCache.getFirstLinkpathDest(
-                            path,
-                            embeddedLink.file.path,
-                        );
-
-                    if (!targetFile) {
-                        this.logger.debug(
-                            `Link target not found: ${cachedLink.link} ` +
-                                `(from ${embeddedLink.file.path})`,
-                        );
-                        // Add to seen list to avoid checking again
-                        seenLinks.set(linkKey, {
-                            hasFullReference: false,
-                            subpaths: new Set<string>(),
-                            file: null,
-                            depth: embeddedLink.depth + 1,
-                        });
-                        continue;
-                    }
-
-                    // Check ACL for target file
-                    try {
-                        this.aclChecker.checkReadAccess(targetFile.path);
-                    } catch {
-                        this.logger.debug(
-                            `Access denied to linked file: ${targetFile.path}`,
-                        );
-                        // Skip forbidden files silently
-                        seenLinks.set(linkKey, {
-                            hasFullReference: false,
-                            subpaths: new Set<string>(),
-                            file: null,
-                            depth: embeddedLink.depth + 1,
-                        });
-                        continue;
-                    }
-
-                    const key = targetFile.path;
-                    let ref = seenLinks.get(key);
-                    if (!ref) {
-                        // create ref if missing
-                        ref = {
-                            hasFullReference: false,
-                            subpaths: new Set<string>(),
-                            file: targetFile,
-                            depth: embeddedLink.depth + 1,
-                        };
-                        seenLinks.set(key, ref);
-                        fileQueue.push(ref);
-                        this.logger.debug(
-                            "Link",
-                            embeddedLink.file.path,
-                            " ➡ ",
-                            targetFile.path,
-                        );
-                    }
-
-                    // Track subpath or full file reference
-                    if (!subpath) {
-                        ref.hasFullReference = true;
-                    } else {
-                        ref.subpaths.add(subpath);
-                    }
-                }
-            }
-            embeddedLink = fileQueue.shift();
-        }
-
-        return seenLinks;
-    }
-
-    /**
-     * Phase 2: Expand content from collected linked files
-     * Formats each file with markers and handles subpath references
-     */
-    private async expandCollectedContent(
-        linkedFiles: EmbeddedNotes,
-    ): Promise<string[]> {
-        const expandedContent: string[] = [];
-
-        this.logger.debug(
-            `Collecting content from ${linkedFiles.size} linked files`,
-        );
-
-        for (const link of linkedFiles.values()) {
-            // Skip null file entries and non-markdown files
-            if (link.file?.extension !== "md") {
-                continue;
-            }
-
-            const fileContent = await this.app.vault.cachedRead(link.file);
-            if (link.hasFullReference) {
-                // emit whole file once
-                expandedContent.push(
-                    `===== BEGIN ENTRY: ${link.file.path} =====`,
-                );
-                expandedContent.push(fileContent);
-                expandedContent.push("===== END ENTRY =====\n");
-            } else {
-                // emit each subpath snippet
-                for (const subpath of link.subpaths) {
-                    expandedContent.push(
-                        `===== BEGIN ENTRY: ${link.file.path}#${subpath} =====`,
-                    );
-                    expandedContent.push(
-                        this.extractSubpathContent(
-                            link.file,
-                            fileContent,
-                            subpath,
-                        ),
-                    );
-                    expandedContent.push("===== END ENTRY =====\n");
-                }
-            }
-        }
-
-        return expandedContent;
-    }
-
-    /**
      * Find the end offset of a heading's section
      * (up to the next heading at same or higher level).
      */
@@ -675,86 +613,48 @@ export class NoteHandler {
 
     /**
      * Extract content for named sections (by heading text).
-     * Case-insensitive match; includes subheadings.
+     * Case-insensitive match; includes subheadings. Throws if a name
+     * matches more than one heading, unless disambiguated via
+     * `headingIndexes` (name -> 0-based occurrence index, or an array
+     * of indices to return more than one occurrence of the same name).
      */
     private extractSections(
         file: TFile,
         fileContent: string,
-        sections: string[],
+        headings: string[],
+        headingIndexes?: Record<string, number | number[]>,
     ): string {
         const cache = this.app.metadataCache.getFileCache(file);
         if (!cache?.headings || cache.headings.length === 0) {
             return "";
         }
 
-        const normalizedNames = sections.map((s) => this.normalizeHeading(s));
-        const headings = cache.headings;
+        const cacheHeadings = cache.headings;
         const parts: string[] = [];
 
-        for (let i = 0; i < headings.length; i++) {
-            const norm = this.normalizeHeading(headings[i].heading);
-            if (!normalizedNames.includes(norm)) {
-                continue;
-            }
+        for (const name of headings) {
+            const requested = headingIndexes?.[name];
+            const indexes = Array.isArray(requested) ? requested : [requested];
 
-            const start = headings[i].position.start.offset;
-            const end = this.findSectionEnd(headings, i, fileContent.length);
-            parts.push(fileContent.substring(start, end).trim());
+            for (const index of indexes) {
+                const resolvedIndex = this.resolveHeadingIndex(
+                    cacheHeadings,
+                    name,
+                    index,
+                    "headingIndexes",
+                );
+                const start =
+                    cacheHeadings[resolvedIndex].position.start.offset;
+                const end = this.findSectionEnd(
+                    cacheHeadings,
+                    resolvedIndex,
+                    fileContent.length,
+                );
+                parts.push(fileContent.substring(start, end).trim());
+            }
         }
 
         return parts.join("\n\n");
-    }
-
-    private extractSubpathContent(
-        file: TFile,
-        fileContent: string,
-        subpath: string,
-    ): string {
-        const cache = this.app.metadataCache.getFileCache(file);
-        if (!cache) {
-            return "";
-        }
-
-        // Check for block reference (^block-id)
-        if (subpath.startsWith("^")) {
-            const blockId = subpath.substring(1);
-            const block = cache.blocks?.[blockId];
-            if (block) {
-                const start = block.position.start.offset;
-                const end = block.position.end.offset;
-                return fileContent.substring(start, end).trim();
-            }
-            this.logger.debug(
-                `Block reference not found: ^${blockId} in ${file.path}`,
-            );
-            return "";
-        }
-
-        // Check for heading reference
-        const targetNormalized = this.normalizeHeading(subpath);
-        const headings = cache.headings;
-        if (!headings) {
-            this.logger.debug(`Subpath not found: #${subpath} in ${file.path}`);
-            return "";
-        }
-
-        const headingIndex = headings.findIndex(
-            (h) => this.normalizeHeading(h.heading) === targetNormalized,
-        );
-
-        if (headingIndex >= 0) {
-            // Content after the heading line, up to next peer
-            const start = headings[headingIndex].position.end.offset;
-            const end = this.findSectionEnd(
-                headings,
-                headingIndex,
-                fileContent.length,
-            );
-            return fileContent.substring(start, end).trim();
-        }
-
-        this.logger.debug(`Subpath not found: #${subpath} in ${file.path}`);
-        return "";
     }
 
     private normalize = (value: string): string => {
