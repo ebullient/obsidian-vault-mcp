@@ -31,7 +31,7 @@ import { PathACLChecker } from "./vaultasmcp-PathACL";
 import { TemplateHandler } from "./vaultasmcp-TemplateHandler";
 
 // Cap read_multiple_notes to avoid flooding callers with content
-const MAX_READ_MULTIPLE_PATHS = 10;
+const MAX_READ_MULTIPLE_PATHS = 25;
 
 export class MCPTools {
     private noteHandler: NoteHandler;
@@ -215,7 +215,11 @@ export class MCPTools {
                 description:
                     "Read multiple notes in one request. " +
                     "Returns a map of path to content or error. " +
-                    `Max ${MAX_READ_MULTIPLE_PATHS} paths per call.`,
+                    `Max ${MAX_READ_MULTIPLE_PATHS} paths per call. ` +
+                    "Pass metadataOnly: true to skip content and return " +
+                    "only embeds/links/outline/frontmatter for each note " +
+                    "— useful for triaging many candidate notes cheaply " +
+                    "before deciding which to read in full.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -225,6 +229,13 @@ export class MCPTools {
                             description:
                                 "Array of note paths to read " +
                                 `(max ${MAX_READ_MULTIPLE_PATHS}).`,
+                        },
+                        metadataOnly: {
+                            type: "boolean",
+                            description:
+                                "Return only embeds/links/outline/" +
+                                "frontmatter for each note, skipping " +
+                                "content entirely. Default: false.",
                         },
                     },
                     required: ["paths"],
@@ -238,6 +249,45 @@ export class MCPTools {
                                 type: "object",
                                 properties: {
                                     content: { type: "string" },
+                                    embeds: {
+                                        type: "array",
+                                        items: {
+                                            type: "object",
+                                            properties: {
+                                                path: { type: "string" },
+                                                subpath: { type: "string" },
+                                            },
+                                            required: ["path"],
+                                        },
+                                    },
+                                    links: {
+                                        type: "array",
+                                        items: {
+                                            type: "object",
+                                            properties: {
+                                                path: { type: "string" },
+                                                subpath: { type: "string" },
+                                            },
+                                            required: ["path"],
+                                        },
+                                    },
+                                    outline: {
+                                        type: "array",
+                                        items: {
+                                            type: "object",
+                                            properties: {
+                                                text: { type: "string" },
+                                                level: { type: "number" },
+                                                index: { type: "number" },
+                                            },
+                                            required: [
+                                                "text",
+                                                "level",
+                                                "index",
+                                            ],
+                                        },
+                                    },
+                                    frontmatter: { type: "object" },
                                     error: { type: "string" },
                                 },
                             },
@@ -663,7 +713,10 @@ export class MCPTools {
                     args.excludePatterns as string[] | undefined,
                 );
             case "read_multiple_notes":
-                return await this.readMultipleNotes(args.paths as string[]);
+                return await this.readMultipleNotes(
+                    args.paths as string[],
+                    args.metadataOnly as boolean | undefined,
+                );
             case "search_notes":
                 return await this.searchNotes(
                     args.tag as string | undefined,
@@ -749,8 +802,25 @@ export class MCPTools {
         );
     }
 
-    private async readMultipleNotes(paths: string[]): Promise<{
-        notes: Record<string, { content?: string; error?: string }>;
+    private async readMultipleNotes(
+        paths: string[],
+        metadataOnly?: boolean,
+    ): Promise<{
+        notes: Record<
+            string,
+            {
+                content?: string;
+                embeds?: { path: string; subpath?: string }[];
+                links?: { path: string; subpath?: string }[];
+                outline?: {
+                    text: string;
+                    level: number;
+                    index: number;
+                }[];
+                frontmatter?: Record<string, unknown>;
+                error?: string;
+            }
+        >;
     }> {
         if (paths.length > MAX_READ_MULTIPLE_PATHS) {
             throw new Error(
@@ -760,13 +830,29 @@ export class MCPTools {
             );
         }
 
-        const results: Record<string, { content?: string; error?: string }> =
-            {};
+        const results: Record<
+            string,
+            {
+                content?: string;
+                embeds?: { path: string; subpath?: string }[];
+                links?: { path: string; subpath?: string }[];
+                outline?: {
+                    text: string;
+                    level: number;
+                    index: number;
+                }[];
+                frontmatter?: Record<string, unknown>;
+                error?: string;
+            }
+        > = {};
 
         for (const path of paths) {
             try {
-                const result = await this.noteHandler.readNote(path);
-                results[path] = { content: result.content };
+                results[path] = await this.noteHandler.readNote(
+                    path,
+                    undefined,
+                    metadataOnly,
+                );
             } catch (e) {
                 results[path] = {
                     error: e instanceof Error ? e.message : String(e),
@@ -843,7 +929,7 @@ export class MCPTools {
 
         const createNote: Record<
             IGranularity,
-            (d: ReturnType<typeof momentFn>) => Promise<TFile>
+            (d: ReturnType<typeof momentFn>) => Promise<TFile | undefined>
         > = {
             day: createDailyNote,
             week: createWeeklyNote,
