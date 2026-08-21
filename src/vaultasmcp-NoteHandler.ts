@@ -11,6 +11,13 @@ import type { TemplateHandler } from "./vaultasmcp-TemplateHandler";
 
 type LinkRef = { path: string; subpath?: string };
 type OutlineEntry = { text: string; level: number; line: number };
+type LineWindow = {
+    content: string;
+    startLine: number;
+    endLine: number;
+    totalLines: number;
+    truncated: boolean;
+};
 
 /**
  * Handles all note CRUD operations with ACL enforcement
@@ -654,6 +661,68 @@ export class NoteHandler {
             fileContent.length,
         );
         return fileContent.substring(start, end).trim();
+    }
+
+    /**
+     * Return the raw file-content window for the requested line range.
+     * Trailing newlines terminate the final real line but do not create
+     * an extra empty one.
+     */
+    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: wired into readNote in Phase 1 Step 2
+    private getLineWindow(
+        fileContent: string,
+        lineOffset = 0,
+        lineLimit?: number,
+    ): LineWindow {
+        const lineStarts = this.getLineStartOffsets(fileContent);
+        const totalLines = lineStarts.length;
+
+        if (totalLines === 0) {
+            throw new Error("Cannot paginate an empty note");
+        }
+
+        if (lineOffset < 0 || lineOffset >= totalLines) {
+            throw new Error(
+                `lineOffset ${lineOffset} is out of range for ${totalLines} lines`,
+            );
+        }
+
+        const endLine =
+            lineLimit === undefined
+                ? totalLines - 1
+                : Math.min(lineOffset + lineLimit - 1, totalLines - 1);
+        const startOffset = lineStarts[lineOffset];
+        const endOffset =
+            endLine + 1 < totalLines
+                ? lineStarts[endLine + 1]
+                : fileContent.length;
+
+        return {
+            content: fileContent.slice(startOffset, endOffset),
+            startLine: lineOffset,
+            endLine,
+            totalLines,
+            truncated: endLine < totalLines - 1,
+        };
+    }
+
+    /**
+     * Compute the start offset of each logical line in a file.
+     * For files ending in "\n", the trailing newline belongs to the
+     * last line rather than creating an empty extra line.
+     */
+    private getLineStartOffsets(fileContent: string): number[] {
+        if (fileContent.length === 0) {
+            return [];
+        }
+
+        const starts = [0];
+        for (let i = 0; i < fileContent.length; i++) {
+            if (fileContent[i] === "\n" && i + 1 < fileContent.length) {
+                starts.push(i + 1);
+            }
+        }
+        return starts;
     }
 
     private normalize = (value: string): string => {
