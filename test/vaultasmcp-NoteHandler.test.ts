@@ -874,6 +874,102 @@ describe("NoteHandler.readNote with a section selector", () => {
         ]);
     });
 
+    it("returns a bounded whole-document line window by lineLimit alone", async () => {
+        const content = "# Intro\nalpha\n# Details\nbeta";
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/doc.md": content,
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/doc.md",
+            makeCache(
+                [
+                    { text: "Intro", level: 1, start: 0, end: 7, line: 0 },
+                    { text: "Details", level: 1, start: 14, end: 23, line: 2 },
+                ],
+                [],
+            ),
+        );
+
+        const result = await handler.readNote(
+            "notes/doc.md",
+            undefined,
+            false,
+            undefined,
+            undefined,
+            2,
+        );
+
+        expect(result.content).toBe("# Intro\nalpha\n");
+        expect(result.startLine).toBe(0);
+        expect(result.endLine).toBe(1);
+        expect(result.totalLines).toBe(4);
+        expect(result.truncated).toBe(true);
+        expect(result.outline).toEqual([
+            { text: "Intro", level: 1, line: 0 },
+            { text: "Details", level: 1, line: 2 },
+        ]);
+    });
+
+    it("returns a bounded whole-document line window by lineOffset and lineLimit", async () => {
+        const content = "# Intro\nalpha\n# Details\nbeta\n# Tail\ngamma";
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/doc.md": content,
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/doc.md",
+            makeCache(
+                [
+                    { text: "Intro", level: 1, start: 0, end: 7, line: 0 },
+                    { text: "Details", level: 1, start: 14, end: 23, line: 2 },
+                    { text: "Tail", level: 1, start: 29, end: 35, line: 4 },
+                ],
+                [],
+            ),
+        );
+
+        const result = await handler.readNote(
+            "notes/doc.md",
+            undefined,
+            false,
+            2,
+            undefined,
+            2,
+        );
+
+        expect(result.content).toBe("# Details\nbeta\n");
+        expect(result.startLine).toBe(2);
+        expect(result.endLine).toBe(3);
+        expect(result.totalLines).toBe(6);
+        expect(result.truncated).toBe(true);
+    });
+
+    it("includes frontmatter lines in whole-document pagination", async () => {
+        const content = "---\nstatus: active\n---\nbody";
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/fm.md": content,
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/fm.md",
+            { frontmatter: { status: "active" } } as CachedMetadata,
+        );
+
+        const result = await handler.readNote(
+            "notes/fm.md",
+            undefined,
+            false,
+            0,
+            undefined,
+            2,
+        );
+
+        expect(result.content).toBe("---\nstatus: active\n");
+        expect(result.frontmatter).toEqual({ status: "active" });
+        expect(result.startLine).toBe(0);
+        expect(result.endLine).toBe(1);
+        expect(result.totalLines).toBe(4);
+        expect(result.truncated).toBe(true);
+    });
+
     it("throws when heading and lineOffset disagree (stale outline)", async () => {
         // "# Introduction\n\nhello\n\n# Details\n\nworld"
         //  0             14 15 16 21 22 23     32 33 34
@@ -961,6 +1057,35 @@ describe("NoteHandler.readNote with a section selector", () => {
         expect(result.content).toBe("# Details\nworld");
     });
 
+    it("omits pagination metadata on heading-scoped reads", async () => {
+        const content = "# Intro\nhello\n# Details\nworld";
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/doc.md": content,
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/doc.md",
+            makeCache(
+                [
+                    { text: "Intro", level: 1, start: 0, end: 7, line: 0 },
+                    { text: "Details", level: 1, start: 14, end: 23, line: 2 },
+                ],
+                [],
+            ),
+        );
+
+        const result = await handler.readNote(
+            "notes/doc.md",
+            "Details",
+            false,
+            2,
+        );
+        expect(result.outline).toBeUndefined();
+        expect(result.startLine).toBeUndefined();
+        expect(result.endLine).toBeUndefined();
+        expect(result.totalLines).toBeUndefined();
+        expect(result.truncated).toBeUndefined();
+    });
+
     it("throws when a requested section heading does not exist", async () => {
         // "# Intro\n\nhello"
         //  0      7 8 9
@@ -1007,6 +1132,73 @@ describe("NoteHandler.readNote with a section selector", () => {
         await expect(
             handler.readNote("notes/plain.md", undefined, false, 12),
         ).rejects.toThrow("lineOffset 12 is out of range for 1 lines");
+    });
+
+    it("throws a line-based error when lineOffset is requested on an empty note", async () => {
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/empty.md": "",
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/empty.md",
+            makeCache([], []),
+        );
+        await expect(
+            handler.readNote("notes/empty.md", undefined, false, 0),
+        ).rejects.toThrow("lineOffset 0 is out of range for 0 lines");
+    });
+
+    it("rejects heading and lineLimit together", async () => {
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/doc.md": "# Intro\nhello",
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/doc.md",
+            makeCache(
+                [{ text: "Intro", level: 1, start: 0, end: 7, line: 0 }],
+                [],
+            ),
+        );
+        await expect(
+            handler.readNote("notes/doc.md", "Intro", false, undefined, undefined, 1),
+        ).rejects.toThrow("lineLimit cannot be used together with heading");
+    });
+
+    it("rejects invalid lineOffset values", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/doc.md": "one line",
+        });
+        await expect(
+            handler.readNote("notes/doc.md", undefined, false, -1),
+        ).rejects.toThrow("lineOffset must be a non-negative integer: -1");
+        await expect(
+            handler.readNote("notes/doc.md", undefined, false, 1.5),
+        ).rejects.toThrow("lineOffset must be a non-negative integer: 1.5");
+    });
+
+    it("rejects invalid lineLimit values", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/doc.md": "one line",
+        });
+        await expect(
+            handler.readNote(
+                "notes/doc.md",
+                undefined,
+                false,
+                undefined,
+                undefined,
+                0,
+            ),
+        ).rejects.toThrow("lineLimit must be a positive integer: 0");
+        await expect(
+            handler.readNote(
+                "notes/doc.md",
+                undefined,
+                false,
+                undefined,
+                undefined,
+                1.5,
+            ),
+        ).rejects.toThrow("lineLimit must be a positive integer: 1.5");
     });
 
     describe("with duplicate heading names", () => {
