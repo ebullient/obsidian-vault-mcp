@@ -93,16 +93,15 @@ export class MCPTools {
                         properties: {
                             text: { type: "string" },
                             level: { type: "number" },
-                            index: {
+                            line: {
                                 type: "number",
                                 description:
-                                    "0-based occurrence index among " +
-                                    "headings with this same text; pass " +
-                                    "to headingIndexes/headingIndex to " +
-                                    "disambiguate.",
+                                    "0-based start line of this heading; " +
+                                    "pass as lineOffset to select or " +
+                                    "disambiguate it.",
                             },
                         },
-                        required: ["text", "level", "index"],
+                        required: ["text", "level", "line"],
                     },
                 },
                 frontmatter: { type: "object" },
@@ -134,10 +133,10 @@ export class MCPTools {
                 name: "read_note",
                 description:
                     "Read note content by path. Returns raw markdown by " +
-                    "default, optionally filtered to named headings; also " +
+                    "default, optionally filtered to one section; also " +
                     "returns embeds (direct embed targets), links (direct " +
                     "outgoing wikilinks), frontmatter, and, when not " +
-                    "filtering by heading, outline (heading list). Pass " +
+                    "filtering to a section, outline (heading list). Pass " +
                     "metadataOnly: true to skip content and return only " +
                     "embeds/links/outline/frontmatter — useful for " +
                     "inspecting a note's structure and connections before " +
@@ -150,40 +149,27 @@ export class MCPTools {
                             description:
                                 "Path to the note (e.g., 'folder/note.md')",
                         },
-                        headings: {
-                            type: "array",
-                            items: { type: "string" },
+                        heading: {
+                            type: "string",
                             description:
-                                "Return only the sections under these " +
-                                "headings, by heading text " +
+                                "Return only the section under this " +
+                                "heading, by heading text " +
                                 "(case-insensitive, includes subheadings). " +
-                                "Throws if a name matches more than one " +
-                                "heading in the note — use headingIndexes " +
-                                "to disambiguate. Ignored when metadataOnly " +
+                                "Throws if it matches more than one " +
+                                "heading in the note — use lineOffset to " +
+                                "disambiguate. Ignored when metadataOnly " +
                                 "is true.",
                         },
-                        headingIndexes: {
-                            type: "object",
-                            additionalProperties: {
-                                anyOf: [
-                                    { type: "number" },
-                                    {
-                                        type: "array",
-                                        items: { type: "number" },
-                                    },
-                                ],
-                            },
+                        lineOffset: {
+                            type: "number",
                             description:
-                                "Disambiguate duplicate heading names in " +
-                                "headings. Map of heading text to " +
-                                "occurrence index (0-based), e.g. " +
-                                '{"Notes": 1} for the second "Notes" ' +
-                                "heading, or an array of indices, e.g. " +
-                                '{"Notes": [0, 1]} to return both the ' +
-                                "first and second occurrences. Only " +
-                                "needed when a name in headings matches " +
-                                "more than once; see outline for " +
-                                "occurrence indices.",
+                                "Select the section by its heading's " +
+                                "0-based start line, from outline[].line. " +
+                                "Usable alone or with heading, in which " +
+                                "case they must agree or the call throws " +
+                                "(refetch the outline via metadataOnly " +
+                                "and retry). Ignored when metadataOnly " +
+                                "is true.",
                         },
                         metadataOnly: {
                             type: "boolean",
@@ -278,13 +264,9 @@ export class MCPTools {
                                             properties: {
                                                 text: { type: "string" },
                                                 level: { type: "number" },
-                                                index: { type: "number" },
+                                                line: { type: "number" },
                                             },
-                                            required: [
-                                                "text",
-                                                "level",
-                                                "index",
-                                            ],
+                                            required: ["text", "level", "line"],
                                         },
                                     },
                                     frontmatter: { type: "object" },
@@ -472,7 +454,7 @@ export class MCPTools {
                     "Append content to an existing note, " +
                     "at end of file or after a heading. " +
                     "Throws if heading matches more than one heading in " +
-                    "the note — see headingIndex. " +
+                    "the note — see lineOffset. " +
                     "Use patch_note instead when replacing existing content.",
                 inputSchema: {
                     type: "object",
@@ -486,15 +468,17 @@ export class MCPTools {
                                 "text without '#' markers (e.g., 'Tasks'); " +
                                 "case-insensitive; defaults to end of " +
                                 "file. Throws if the text matches more " +
-                                "than one heading — use headingIndex to " +
+                                "than one heading — use lineOffset to " +
                                 "disambiguate.",
                         },
-                        headingIndex: {
+                        lineOffset: {
                             type: "number",
                             description:
-                                "Disambiguate a duplicate heading value " +
-                                "(0-based occurrence index); see outline " +
-                                "for occurrence indices.",
+                                "Select the heading by its 0-based start " +
+                                "line, from outline[].line. Usable alone " +
+                                "or with heading, in which case they must " +
+                                "agree or the call throws (refetch the " +
+                                "outline via metadataOnly and retry).",
                         },
                         separator: {
                             type: "string",
@@ -539,7 +523,7 @@ export class MCPTools {
                     "Fails if old_text is not found or is not unique " +
                     "(include surrounding context to disambiguate). " +
                     "Also throws if heading matches more than one " +
-                    "heading in the note — see headingIndex.",
+                    "heading in the note — see lineOffset.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -559,14 +543,16 @@ export class MCPTools {
                                 "Scope search to this heading's section " +
                                 "(case-insensitive). Throws if the text " +
                                 "matches more than one heading — use " +
-                                "headingIndex to disambiguate.",
+                                "lineOffset to disambiguate.",
                         },
-                        headingIndex: {
+                        lineOffset: {
                             type: "number",
                             description:
-                                "Disambiguate a duplicate heading value " +
-                                "(0-based occurrence index); see outline " +
-                                "for occurrence indices.",
+                                "Select the heading by its 0-based start " +
+                                "line, from outline[].line. Usable alone " +
+                                "or with heading, in which case they must " +
+                                "agree or the call throws (refetch the " +
+                                "outline via metadataOnly and retry).",
                         },
                     },
                     required: ["path", "old_text", "new_text"],
@@ -705,11 +691,9 @@ export class MCPTools {
             case "read_note":
                 return await this.readNote(
                     args.path as string,
-                    args.headings as string[] | undefined,
+                    args.heading as string | undefined,
                     args.metadataOnly as boolean | undefined,
-                    args.headingIndexes as
-                        | Record<string, number | number[]>
-                        | undefined,
+                    args.lineOffset as number | undefined,
                     args.excludePatterns as string[] | undefined,
                 );
             case "read_multiple_notes":
@@ -745,7 +729,7 @@ export class MCPTools {
                     args.content as string,
                     args.heading as string | undefined,
                     args.separator as string | undefined,
-                    args.headingIndex as number | undefined,
+                    args.lineOffset as number | undefined,
                 );
             case "patch_note":
                 return await this.noteHandler.patchNote(
@@ -753,7 +737,7 @@ export class MCPTools {
                     args.old_text as string,
                     args.new_text as string,
                     args.heading as string | undefined,
-                    args.headingIndex as number | undefined,
+                    args.lineOffset as number | undefined,
                 );
             case "update_note":
                 return await this.updateNote(
@@ -782,22 +766,22 @@ export class MCPTools {
 
     private async readNote(
         path: string,
-        headings?: string[],
+        heading?: string,
         metadataOnly?: boolean,
-        headingIndexes?: Record<string, number | number[]>,
+        lineOffset?: number,
         excludePatterns?: string[],
     ): Promise<{
         content?: string;
         embeds?: { path: string; subpath?: string }[];
         links?: { path: string; subpath?: string }[];
-        outline?: { text: string; level: number; index: number }[];
+        outline?: { text: string; level: number; line: number }[];
         frontmatter?: Record<string, unknown>;
     }> {
         return await this.noteHandler.readNote(
             path,
-            headings,
+            heading,
             metadataOnly,
-            headingIndexes,
+            lineOffset,
             excludePatterns,
         );
     }
@@ -815,7 +799,7 @@ export class MCPTools {
                 outline?: {
                     text: string;
                     level: number;
-                    index: number;
+                    line: number;
                 }[];
                 frontmatter?: Record<string, unknown>;
                 error?: string;
@@ -839,7 +823,7 @@ export class MCPTools {
                 outline?: {
                     text: string;
                     level: number;
-                    index: number;
+                    line: number;
                 }[];
                 frontmatter?: Record<string, unknown>;
                 error?: string;
@@ -882,14 +866,14 @@ export class MCPTools {
         content: string,
         heading?: string,
         separator = "\n",
-        headingIndex?: number,
+        lineOffset?: number,
     ): Promise<{ path: string }> {
         return await this.noteHandler.appendToNote(
             path,
             content,
             heading,
             separator,
-            headingIndex,
+            lineOffset,
         );
     }
 

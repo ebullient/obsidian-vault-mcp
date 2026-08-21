@@ -121,7 +121,7 @@ describe("NoteHandler.readNote", () => {
         expect(result.frontmatter).toBeUndefined();
     });
 
-    it("includes outline when sections is not used", async () => {
+    it("includes outline when a section is not requested", async () => {
         const { handler, app } = makeHandler(openSettings, {
             "notes/doc.md": "# Intro\nhello\n# Details\nmore",
         });
@@ -137,12 +137,12 @@ describe("NoteHandler.readNote", () => {
         );
         const result = await handler.readNote("notes/doc.md");
         expect(result.outline).toEqual([
-            { text: "Intro", level: 1, index: 0 },
-            { text: "Details", level: 1, index: 0 },
+            { text: "Intro", level: 1, line: 0 },
+            { text: "Details", level: 1, line: 2 },
         ]);
     });
 
-    it("omits outline when sections is used", async () => {
+    it("omits outline when a section is requested", async () => {
         const { handler, app } = makeHandler(openSettings, {
             "notes/doc.md": "# Intro\nhello\n# Details\nmore",
         });
@@ -156,11 +156,11 @@ describe("NoteHandler.readNote", () => {
                 [],
             ),
         );
-        const result = await handler.readNote("notes/doc.md", ["Intro"]);
+        const result = await handler.readNote("notes/doc.md", "Intro");
         expect(result.outline).toBeUndefined();
     });
 
-    it("numbers outline index per duplicate heading name, not by position", async () => {
+    it("reports each duplicate-named heading's own line, not an occurrence index", async () => {
         const { handler, app } = makeHandler(openSettings, {
             "notes/doc.md": "# Notes\na\n# Intro\nb\n# Notes\nc",
         });
@@ -177,9 +177,9 @@ describe("NoteHandler.readNote", () => {
         );
         const result = await handler.readNote("notes/doc.md");
         expect(result.outline).toEqual([
-            { text: "Notes", level: 1, index: 0 },
-            { text: "Intro", level: 1, index: 0 },
-            { text: "Notes", level: 1, index: 1 },
+            { text: "Notes", level: 1, line: 0 },
+            { text: "Intro", level: 1, line: 2 },
+            { text: "Notes", level: 1, line: 4 },
         ]);
     });
 
@@ -481,7 +481,7 @@ describe("NoteHandler.readNote", () => {
             );
             expect(result.content).toBeUndefined();
             expect(result.outline).toEqual([
-                { text: "Intro", level: 1, index: 0 },
+                { text: "Intro", level: 1, line: 0 },
             ]);
             expect(result.frontmatter).toEqual({ status: "active" });
         });
@@ -511,12 +511,12 @@ describe("NoteHandler.readNote", () => {
             );
             const result = await handler.readNote(
                 "notes/doc.md",
-                ["Intro"],
+                "Intro",
                 true,
             );
             expect(result.outline).toEqual([
-                { text: "Intro", level: 1, index: 0 },
-                { text: "Details", level: 1, index: 0 },
+                { text: "Intro", level: 1, line: 0 },
+                { text: "Details", level: 1, line: 2 },
             ]);
         });
     });
@@ -695,6 +695,38 @@ describe("NoteHandler.appendToNote", () => {
         expect(result.content).toBe("# Tasks\n- item 1\n- item 2");
     });
 
+    it("stops at the next heading of any level, not level-aware", async () => {
+        // "# Intro\nhello\n## Sub\nnested\n# Details\nworld"
+        //  0      7 8    13 14 20 21   27 28    37 38
+        const content = "# Intro\nhello\n## Sub\nnested\n# Details\nworld";
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/doc.md": content,
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/doc.md",
+            makeCache(
+                [
+                    { text: "Intro",   level: 1, start: 0,  end: 7,  line: 0 },
+                    { text: "Sub",     level: 2, start: 14, end: 20, line: 2 },
+                    { text: "Details", level: 1, start: 28, end: 37, line: 4 },
+                ],
+                [
+                    { type: "heading",   start: 0,  end: 7,  line: 0 },
+                    { type: "paragraph", start: 8,  end: 13, line: 1 },
+                    { type: "heading",   start: 14, end: 20, line: 2 },
+                    { type: "paragraph", start: 21, end: 27, line: 3 },
+                    { type: "heading",   start: 28, end: 37, line: 4 },
+                    { type: "paragraph", start: 38, end: 43, line: 5 },
+                ],
+            ),
+        );
+        await handler.appendToNote("notes/doc.md", "added", "Intro");
+        const result = await handler.readNote("notes/doc.md");
+        expect(result.content).toBe(
+            "# Intro\nhello\nadded\n## Sub\nnested\n# Details\nworld",
+        );
+    });
+
     describe("with a duplicate heading", () => {
         // "# Notes\nfirst\n# Notes\nsecond"
         //  0      7 8    13 14    21 22
@@ -729,32 +761,54 @@ describe("NoteHandler.appendToNote", () => {
             ).rejects.toThrow('Heading "Notes" is ambiguous (2 matches)');
         });
 
-        it("names headingIndex, not other tools' params, in the ambiguity error", async () => {
+        it("names lineOffset in the ambiguity error", async () => {
             const handler = makeDuplicateHandler();
             await expect(
                 handler.appendToNote("notes/log.md", "x", "Notes"),
-            ).rejects.toThrow("pass headingIndex");
+            ).rejects.toThrow("pass lineOffset");
         });
 
-        it("appends after the occurrence selected via headingIndex", async () => {
+        it("appends after the occurrence selected via lineOffset", async () => {
             const handler = makeDuplicateHandler();
             await handler.appendToNote(
                 "notes/log.md",
                 "added",
                 "Notes",
                 "\n",
-                1,
+                2,
             );
             const result = await handler.readNote("notes/log.md");
             expect(result.content).toBe(
                 "# Notes\nfirst\n# Notes\nsecond\nadded",
             );
         });
+
+        it("appends after the section selected via lineOffset alone", async () => {
+            const handler = makeDuplicateHandler();
+            await handler.appendToNote(
+                "notes/log.md",
+                "added",
+                undefined,
+                "\n",
+                0,
+            );
+            const result = await handler.readNote("notes/log.md");
+            expect(result.content).toBe(
+                "# Notes\nfirst\nadded\n# Notes\nsecond",
+            );
+        });
+
+        it("throws when no heading exists at the given lineOffset", async () => {
+            const handler = makeDuplicateHandler();
+            await expect(
+                handler.appendToNote("notes/log.md", "x", "Notes", "\n", 99),
+            ).rejects.toThrow("No heading found at line 99");
+        });
     });
 });
 
-describe("NoteHandler.readNote with headings", () => {
-    it("returns only the requested section", async () => {
+describe("NoteHandler.readNote with a section selector", () => {
+    it("returns only the requested section, by heading name", async () => {
         // "# Introduction\n\nhello\n\n# Details\n\nworld"
         //  0             14 15 16 21 22 23     32 33 34
         const content = "# Introduction\n\nhello\n\n# Details\n\nworld";
@@ -776,15 +830,15 @@ describe("NoteHandler.readNote with headings", () => {
                 ],
             ),
         );
-        const result = await handler.readNote("notes/doc.md", ["Details"]);
+        const result = await handler.readNote("notes/doc.md", "Details");
         expect(result.content).toContain("world");
         expect(result.content).not.toContain("hello");
     });
 
-    it("returns multiple sections when requested", async () => {
-        // "# Intro\n\nhello\n\n# Body\n\nworld\n\n# Footer\n\nbye"
-        //  0      7 8 9    14 15 16  22 23 24 30 31 32    40 41
-        const content = "# Intro\n\nhello\n\n# Body\n\nworld\n\n# Footer\n\nbye";
+    it("returns the requested section by lineOffset alone", async () => {
+        // "# Introduction\n\nhello\n\n# Details\n\nworld"
+        //  0             14 15 16 21 22 23     32 33 34
+        const content = "# Introduction\n\nhello\n\n# Details\n\nworld";
         const { handler, app } = makeHandler(openSettings, {
             "notes/doc.md": content,
         });
@@ -792,27 +846,112 @@ describe("NoteHandler.readNote with headings", () => {
             "notes/doc.md",
             makeCache(
                 [
-                    { text: "Intro",  level: 1, start: 0,  end: 7,  line: 0 },
-                    { text: "Body",   level: 1, start: 16, end: 22, line: 4 },
-                    { text: "Footer", level: 1, start: 31, end: 39, line: 8 },
+                    { text: "Introduction", level: 1, start: 0,  end: 14, line: 0 },
+                    { text: "Details",      level: 1, start: 23, end: 32, line: 4 },
                 ],
                 [
-                    { type: "heading",   start: 0,  end: 7,  line: 0 },
-                    { type: "paragraph", start: 9,  end: 14, line: 2 },
-                    { type: "heading",   start: 16, end: 22, line: 4 },
-                    { type: "paragraph", start: 24, end: 29, line: 6 },
-                    { type: "heading",   start: 31, end: 39, line: 8 },
-                    { type: "paragraph", start: 41, end: 43, line: 10 },
+                    { type: "heading",   start: 0,  end: 14, line: 0 },
+                    { type: "paragraph", start: 16, end: 21, line: 2 },
+                    { type: "heading",   start: 23, end: 32, line: 4 },
+                    { type: "paragraph", start: 34, end: 38, line: 6 },
                 ],
             ),
         );
-        const result = await handler.readNote("notes/doc.md", [
-            "Intro",
-            "Footer",
-        ]);
+        const result = await handler.readNote(
+            "notes/doc.md",
+            undefined,
+            false,
+            4,
+        );
+        expect(result.content).toContain("world");
+        expect(result.content).not.toContain("hello");
+    });
+
+    it("throws when heading and lineOffset disagree (stale outline)", async () => {
+        // "# Introduction\n\nhello\n\n# Details\n\nworld"
+        //  0             14 15 16 21 22 23     32 33 34
+        const content = "# Introduction\n\nhello\n\n# Details\n\nworld";
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/doc.md": content,
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/doc.md",
+            makeCache(
+                [
+                    { text: "Introduction", level: 1, start: 0,  end: 14, line: 0 },
+                    { text: "Details",      level: 1, start: 23, end: 32, line: 4 },
+                ],
+                [
+                    { type: "heading",   start: 0,  end: 14, line: 0 },
+                    { type: "paragraph", start: 16, end: 21, line: 2 },
+                    { type: "heading",   start: 23, end: 32, line: 4 },
+                    { type: "paragraph", start: 34, end: 38, line: 6 },
+                ],
+            ),
+        );
+        await expect(
+            handler.readNote("notes/doc.md", "Details", false, 0),
+        ).rejects.toThrow(
+            'Heading at line 0 is "Introduction", not "Details"',
+        );
+    });
+
+    it("includes nested subheadings' content in the resolved section", async () => {
+        // "# Intro\nhello\n## Sub\nnested\n# Details\nworld"
+        //  0      7 8    13 14 20 21   27 28     37 38
+        const content = "# Intro\nhello\n## Sub\nnested\n# Details\nworld";
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/doc.md": content,
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/doc.md",
+            makeCache(
+                [
+                    { text: "Intro",   level: 1, start: 0,  end: 7,  line: 0 },
+                    { text: "Sub",     level: 2, start: 14, end: 20, line: 2 },
+                    { text: "Details", level: 1, start: 28, end: 37, line: 4 },
+                ],
+                [
+                    { type: "heading",   start: 0,  end: 7,  line: 0 },
+                    { type: "paragraph", start: 8,  end: 13, line: 1 },
+                    { type: "heading",   start: 14, end: 20, line: 2 },
+                    { type: "paragraph", start: 21, end: 27, line: 3 },
+                    { type: "heading",   start: 28, end: 37, line: 4 },
+                    { type: "paragraph", start: 38, end: 43, line: 5 },
+                ],
+            ),
+        );
+        const result = await handler.readNote("notes/doc.md", "Intro");
         expect(result.content).toContain("hello");
-        expect(result.content).toContain("bye");
+        expect(result.content).toContain("## Sub");
+        expect(result.content).toContain("nested");
         expect(result.content).not.toContain("world");
+    });
+
+    it("returns a section at the end of the file through end-of-file", async () => {
+        // "# Intro\nhello\n# Details\nworld"
+        //  0      7 8    13 14    23 24
+        const content = "# Intro\nhello\n# Details\nworld";
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/doc.md": content,
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/doc.md",
+            makeCache(
+                [
+                    { text: "Intro",   level: 1, start: 0,  end: 7,  line: 0 },
+                    { text: "Details", level: 1, start: 14, end: 23, line: 2 },
+                ],
+                [
+                    { type: "heading",   start: 0,  end: 7,  line: 0 },
+                    { type: "paragraph", start: 8,  end: 13, line: 1 },
+                    { type: "heading",   start: 14, end: 23, line: 2 },
+                    { type: "paragraph", start: 24, end: 29, line: 3 },
+                ],
+            ),
+        );
+        const result = await handler.readNote("notes/doc.md", "Details");
+        expect(result.content).toBe("# Details\nworld");
     });
 
     it("throws when a requested section heading does not exist", async () => {
@@ -833,8 +972,34 @@ describe("NoteHandler.readNote with headings", () => {
             ),
         );
         await expect(
-            handler.readNote("notes/doc.md", ["Missing"]),
+            handler.readNote("notes/doc.md", "Missing"),
         ).rejects.toThrow("Heading not found: Missing");
+    });
+
+    it("throws when a heading is requested on a note with no headings at all", async () => {
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/plain.md": "just text, no headings",
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/plain.md",
+            makeCache([], []),
+        );
+        await expect(
+            handler.readNote("notes/plain.md", "Missing"),
+        ).rejects.toThrow("Heading not found: Missing");
+    });
+
+    it("throws a line-based error when lineOffset is requested on a note with no headings at all", async () => {
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/plain.md": "just text, no headings",
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/plain.md",
+            makeCache([], []),
+        );
+        await expect(
+            handler.readNote("notes/plain.md", undefined, false, 12),
+        ).rejects.toThrow("No heading found at line 12");
     });
 
     describe("with duplicate heading names", () => {
@@ -862,48 +1027,36 @@ describe("NoteHandler.readNote with headings", () => {
         it("throws when a name matches more than one heading", async () => {
             const handler = makeDuplicateHandler();
             await expect(
-                handler.readNote("notes/doc.md", ["Notes"]),
+                handler.readNote("notes/doc.md", "Notes"),
             ).rejects.toThrow('Heading "Notes" is ambiguous (2 matches)');
         });
 
-        it("names headingIndexes, not other tools' params, in the ambiguity error", async () => {
+        it("names lineOffset in the ambiguity error", async () => {
             const handler = makeDuplicateHandler();
             await expect(
-                handler.readNote("notes/doc.md", ["Notes"]),
-            ).rejects.toThrow("pass headingIndexes");
+                handler.readNote("notes/doc.md", "Notes"),
+            ).rejects.toThrow("pass lineOffset");
         });
 
-        it("resolves to the targeted occurrence via headingIndexes", async () => {
+        it("resolves to the targeted occurrence via lineOffset", async () => {
             const handler = makeDuplicateHandler();
             const first = await handler.readNote(
                 "notes/doc.md",
-                ["Notes"],
+                "Notes",
                 false,
-                { Notes: 0 },
+                0,
             );
             expect(first.content).toContain("first");
             expect(first.content).not.toContain("second");
 
             const second = await handler.readNote(
                 "notes/doc.md",
-                ["Notes"],
+                "Notes",
                 false,
-                { Notes: 1 },
+                2,
             );
             expect(second.content).toContain("second");
             expect(second.content).not.toContain("first");
-        });
-
-        it("returns multiple occurrences of the same name via an index array", async () => {
-            const handler = makeDuplicateHandler();
-            const result = await handler.readNote(
-                "notes/doc.md",
-                ["Notes"],
-                false,
-                { Notes: [0, 1] },
-            );
-            expect(result.content).toContain("first");
-            expect(result.content).toContain("second");
         });
     });
 });
@@ -934,6 +1087,33 @@ describe("NoteHandler.patchNote", () => {
         await expect(
             handler.patchNote("notes/doc.md", "foo", "bar"),
         ).rejects.toThrow("Text appears more than once");
+    });
+
+    it("names the resolved section, not the note, when scoped by lineOffset alone", async () => {
+        // "# Intro\nhello\n# Details\nfoo foo"
+        //  0      7 8    13 14      23 24
+        const content = "# Intro\nhello\n# Details\nfoo foo";
+        const { handler, app } = makeHandler(openSettings, {
+            "notes/doc.md": content,
+        });
+        (app.metadataCache as unknown as MetadataCache).setCache__(
+            "notes/doc.md",
+            makeCache(
+                [
+                    { text: "Intro",   level: 1, start: 0,  end: 7,  line: 0 },
+                    { text: "Details", level: 1, start: 14, end: 23, line: 2 },
+                ],
+                [],
+            ),
+        );
+        await expect(
+            handler.patchNote("notes/doc.md", "missing", "x", undefined, 2),
+        ).rejects.toThrow('Text not found in section "Details"');
+        await expect(
+            handler.patchNote("notes/doc.md", "foo", "x", undefined, 2),
+        ).rejects.toThrow(
+            'Text appears more than once in section "Details"',
+        );
     });
 
     it("normalizes CRLF in file and old_text before matching", async () => {
@@ -1013,24 +1193,50 @@ describe("NoteHandler.patchNote", () => {
             ).rejects.toThrow('Heading "Notes" is ambiguous (2 matches)');
         });
 
-        it("names headingIndex, not other tools' params, in the ambiguity error", async () => {
+        it("names lineOffset in the ambiguity error", async () => {
             const handler = makeDuplicateHandler();
             await expect(
                 handler.patchNote("notes/doc.md", "target", "x", "Notes"),
-            ).rejects.toThrow("pass headingIndex to select");
+            ).rejects.toThrow("pass lineOffset to select");
         });
 
-        it("patches the occurrence selected via headingIndex", async () => {
+        it("patches the occurrence selected via lineOffset", async () => {
             const handler = makeDuplicateHandler();
             await handler.patchNote(
                 "notes/doc.md",
                 "target",
                 "patched",
                 "Notes",
-                1,
+                2,
             );
             const result = await handler.readNote("notes/doc.md");
             expect(result.content).toBe("# Notes\ntarget\n# Notes\npatched");
+        });
+
+        it("patches the section selected via lineOffset alone", async () => {
+            const handler = makeDuplicateHandler();
+            await handler.patchNote(
+                "notes/doc.md",
+                "target",
+                "patched",
+                undefined,
+                0,
+            );
+            const result = await handler.readNote("notes/doc.md");
+            expect(result.content).toBe("# Notes\npatched\n# Notes\ntarget");
+        });
+
+        it("throws when heading and lineOffset disagree (stale outline)", async () => {
+            const handler = makeDuplicateHandler();
+            await expect(
+                handler.patchNote(
+                    "notes/doc.md",
+                    "target",
+                    "x",
+                    "Wrong",
+                    0,
+                ),
+            ).rejects.toThrow('Heading at line 0 is "Notes", not "Wrong"');
         });
     });
 });

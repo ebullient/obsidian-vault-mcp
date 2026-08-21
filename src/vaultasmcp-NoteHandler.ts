@@ -10,7 +10,7 @@ import type { PathACLChecker } from "./vaultasmcp-PathACL";
 import type { TemplateHandler } from "./vaultasmcp-TemplateHandler";
 
 type LinkRef = { path: string; subpath?: string };
-type OutlineEntry = { text: string; level: number; index: number };
+type OutlineEntry = { text: string; level: number; line: number };
 
 /**
  * Handles all note CRUD operations with ACL enforcement
@@ -51,9 +51,9 @@ export class NoteHandler {
      */
     async readNote(
         path: string,
-        headings?: string[],
+        heading?: string,
         metadataOnly = false,
-        headingIndexes?: Record<string, number | number[]>,
+        lineOffset?: number,
         excludePatterns?: string[],
     ): Promise<{
         content?: string;
@@ -90,13 +90,13 @@ export class NoteHandler {
 
         const content = await this.app.vault.cachedRead(file);
 
-        if (headings && headings.length > 0) {
+        if (heading !== undefined || lineOffset !== undefined) {
             return {
-                content: this.extractSections(
+                content: this.extractSection(
                     file,
                     content,
-                    headings,
-                    headingIndexes,
+                    heading,
+                    lineOffset,
                 ),
                 embeds,
                 links,
@@ -114,20 +114,48 @@ export class NoteHandler {
     }
 
     /**
-     * Resolve a heading by name (case-insensitive) to its index in
-     * cache.headings. Throws if the name matches more than once, unless
-     * `index` (0-based, among same-named matches) disambiguates which
-     * occurrence to use. `paramName` names the caller's disambiguation
-     * parameter (e.g. "headingIndex") so error messages point at the
-     * right one for the tool that's actually being called.
+     * Resolve a heading selector (`name` and/or `lineOffset`) to its
+     * index in cache.headings.
+     *
+     * - `lineOffset` only: resolves directly by exact
+     *   `position.start.line` match, regardless of name.
+     * - `name` only: resolves by case-insensitive, normalized name
+     *   match. Throws if the name matches more than once.
+     * - `name` + `lineOffset`: resolves by `lineOffset`, then
+     *   validates the resolved heading's normalized text matches
+     *   `name` — guards against the file having changed since the
+     *   caller last read the outline.
      */
     private resolveHeadingIndex(
         headings: HeadingCache[],
-        name: string,
-        index: number | undefined,
-        paramName: string,
+        name: string | undefined,
+        lineOffset: number | undefined,
     ): number {
-        const normalizedName = this.normalizeHeading(name);
+        if (lineOffset !== undefined) {
+            const index = headings.findIndex(
+                (h) => h.position.start.line === lineOffset,
+            );
+            if (index === -1) {
+                throw new Error(`No heading found at line ${lineOffset}`);
+            }
+            if (name !== undefined) {
+                const normalizedName = this.normalizeHeading(name);
+                if (
+                    this.normalizeHeading(headings[index].heading) !==
+                    normalizedName
+                ) {
+                    throw new Error(
+                        `Heading at line ${lineOffset} is ` +
+                            `"${headings[index].heading}", not "${name}". ` +
+                            "The outline may be stale — refresh it with " +
+                            "metadataOnly and retry.",
+                    );
+                }
+            }
+            return index;
+        }
+
+        const normalizedName = this.normalizeHeading(name ?? "");
         const matches: number[] = [];
         headings.forEach((h, i) => {
             if (this.normalizeHeading(h.heading) === normalizedName) {
@@ -139,23 +167,12 @@ export class NoteHandler {
             throw new Error(`Heading not found: ${name}`);
         }
 
-        if (index !== undefined) {
-            if (index < 0 || index >= matches.length) {
-                throw new Error(
-                    `Heading index ${index} out of range for "${name}" ` +
-                        `(${matches.length} match(es), valid range ` +
-                        `0-${matches.length - 1})`,
-                );
-            }
-            return matches[index];
-        }
-
         if (matches.length > 1) {
             throw new Error(
                 `Heading "${name}" is ambiguous (${matches.length} ` +
-                    "matches). Use metadataOnly to inspect outline " +
-                    `indices, then pass ${paramName} to select a ` +
-                    "specific occurrence.",
+                    "matches). Use metadataOnly to inspect the " +
+                    "outline's line numbers, then pass lineOffset " +
+                    "to select a specific occurrence.",
             );
         }
 
@@ -216,9 +233,9 @@ export class NoteHandler {
     }
 
     /**
-     * Heading outline for a note. `index` is the 0-based occurrence
-     * count among same-named headings (matches resolveHeadingIndex's
-     * numbering), so a caller can pass it back to disambiguate.
+     * Heading outline for a note. `line` is the heading's
+     * file-relative start line (0-based), so a caller can pass it
+     * back as `lineOffset` to select or disambiguate a heading.
      */
     private getOutline(
         cache: CachedMetadata | null,
@@ -226,13 +243,11 @@ export class NoteHandler {
         if (!cache?.headings?.length) {
             return undefined;
         }
-        const countByName = new Map<string, number>();
-        return cache.headings.map((h) => {
-            const key = this.normalizeHeading(h.heading);
-            const index = countByName.get(key) ?? 0;
-            countByName.set(key, index + 1);
-            return { text: h.heading, level: h.level, index };
-        });
+        return cache.headings.map((h) => ({
+            text: h.heading,
+            level: h.level,
+            line: h.position.start.line,
+        }));
     }
 
     /**
@@ -315,11 +330,11 @@ export class NoteHandler {
         content: string,
         heading?: string,
         separator = "\n",
-        headingIndex?: number,
+        lineOffset?: number,
     ): Promise<{ path: string }> {
         const file = this.getFileWithAclCheck(path, true);
 
-        if (heading) {
+        if (heading !== undefined || lineOffset !== undefined) {
             const cache = this.app.metadataCache.getFileCache(file);
             if (!cache?.sections || !cache.headings) {
                 throw new Error(
@@ -333,7 +348,7 @@ export class NoteHandler {
                 const insertOffset = this.findHeadingEndOffset(
                     file,
                     heading,
-                    headingIndex,
+                    lineOffset,
                 );
 
                 const before = data.slice(0, insertOffset);
@@ -363,7 +378,7 @@ export class NoteHandler {
         oldText: string,
         newText: string,
         heading?: string,
-        headingIndex?: number,
+        lineOffset?: number,
     ): Promise<{ path: string }> {
         if (!path) throw new Error("path is required");
         if (!oldText) throw new Error("old_text is required");
@@ -378,8 +393,9 @@ export class NoteHandler {
 
             let searchIn = normalizedData;
             let searchOffset = 0;
+            let resolvedHeading: string | undefined;
 
-            if (heading) {
+            if (heading !== undefined || lineOffset !== undefined) {
                 const cache = this.app.metadataCache.getFileCache(file);
                 if (!cache?.headings) {
                     throw new Error(
@@ -390,8 +406,7 @@ export class NoteHandler {
                 const resolvedIndex = this.resolveHeadingIndex(
                     cache.headings,
                     heading,
-                    headingIndex,
-                    "headingIndex",
+                    lineOffset,
                 );
                 const start =
                     cache.headings[resolvedIndex].position.start.offset;
@@ -402,20 +417,21 @@ export class NoteHandler {
                 );
                 searchIn = normalizedData.substring(start, end);
                 searchOffset = start;
+                resolvedHeading = cache.headings[resolvedIndex].heading;
             }
 
             const idx = searchIn.indexOf(normalizedOldText);
             if (idx === -1) {
                 throw new Error(
-                    heading
-                        ? `Text not found in section "${heading}"`
+                    resolvedHeading
+                        ? `Text not found in section "${resolvedHeading}"`
                         : "Text not found in note",
                 );
             }
             if (searchIn.indexOf(normalizedOldText, idx + 1) !== -1) {
                 throw new Error(
-                    heading
-                        ? `Text appears more than once in section "${heading}"; ` +
+                    resolvedHeading
+                        ? `Text appears more than once in section "${resolvedHeading}"; ` +
                               "provide more context to make it unique"
                         : "Text appears more than once in note; " +
                               "provide more context to make it unique",
@@ -508,8 +524,8 @@ export class NoteHandler {
 
     private findHeadingEndOffset(
         file: TFile,
-        heading: string,
-        headingIndex?: number,
+        heading: string | undefined,
+        lineOffset?: number,
     ): number {
         const cache = this.app.metadataCache.getFileCache(file);
         if (!cache?.sections || !cache.headings) {
@@ -523,8 +539,7 @@ export class NoteHandler {
         const resolvedIndex = this.resolveHeadingIndex(
             cache.headings,
             heading,
-            headingIndex,
-            "headingIndex",
+            lineOffset,
         );
         const foundHeading = cache.headings[resolvedIndex];
 
@@ -612,49 +627,33 @@ export class NoteHandler {
     }
 
     /**
-     * Extract content for named sections (by heading text).
-     * Case-insensitive match; includes subheadings. Throws if a name
-     * matches more than one heading, unless disambiguated via
-     * `headingIndexes` (name -> 0-based occurrence index, or an array
-     * of indices to return more than one occurrence of the same name).
+     * Extract content for one section (by heading text and/or
+     * lineOffset). Case-insensitive match; includes subheadings.
+     * Throws if `heading` matches more than one heading and no
+     * `lineOffset` disambiguates, if neither selector resolves to a
+     * heading (including when the note has no headings at all), or if
+     * both are given but disagree (stale outline).
      */
-    private extractSections(
+    private extractSection(
         file: TFile,
         fileContent: string,
-        headings: string[],
-        headingIndexes?: Record<string, number | number[]>,
+        heading: string | undefined,
+        lineOffset: number | undefined,
     ): string {
         const cache = this.app.metadataCache.getFileCache(file);
-        if (!cache?.headings || cache.headings.length === 0) {
-            return "";
-        }
-
-        const cacheHeadings = cache.headings;
-        const parts: string[] = [];
-
-        for (const name of headings) {
-            const requested = headingIndexes?.[name];
-            const indexes = Array.isArray(requested) ? requested : [requested];
-
-            for (const index of indexes) {
-                const resolvedIndex = this.resolveHeadingIndex(
-                    cacheHeadings,
-                    name,
-                    index,
-                    "headingIndexes",
-                );
-                const start =
-                    cacheHeadings[resolvedIndex].position.start.offset;
-                const end = this.findSectionEnd(
-                    cacheHeadings,
-                    resolvedIndex,
-                    fileContent.length,
-                );
-                parts.push(fileContent.substring(start, end).trim());
-            }
-        }
-
-        return parts.join("\n\n");
+        const cacheHeadings = cache?.headings ?? [];
+        const resolvedIndex = this.resolveHeadingIndex(
+            cacheHeadings,
+            heading,
+            lineOffset,
+        );
+        const start = cacheHeadings[resolvedIndex].position.start.offset;
+        const end = this.findSectionEnd(
+            cacheHeadings,
+            resolvedIndex,
+            fileContent.length,
+        );
+        return fileContent.substring(start, end).trim();
     }
 
     private normalize = (value: string): string => {
