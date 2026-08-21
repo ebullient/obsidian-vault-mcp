@@ -53,6 +53,74 @@ function makeTools(files: Record<string, string> = {}): {
     return { tools, app };
 }
 
+describe("read_note tool surface", () => {
+    it("declares pagination input and output fields in the tool schema", () => {
+        const { tools } = makeTools({});
+        const readNote = tools
+            .getToolDefinitions()
+            .find((tool) => tool.name === "read_note");
+
+        expect(readNote).toBeDefined();
+        if (!readNote) {
+            throw new Error("read_note tool definition not found");
+        }
+        if (!readNote.outputSchema) {
+            throw new Error("read_note outputSchema not found");
+        }
+
+        const inputProperties = readNote.inputSchema.properties as Record<
+            string,
+            { type?: string; description?: string }
+        >;
+        const outputProperties = readNote.outputSchema.properties as Record<
+            string,
+            { type?: string; description?: string }
+        >;
+
+        expect(inputProperties.lineLimit).toMatchObject({
+            type: "number",
+        });
+        expect(inputProperties.heading?.description).toContain(
+            "Cannot be combined with lineLimit",
+        );
+        expect(inputProperties.lineOffset?.description).toContain(
+            "When heading is absent, start a whole-document read",
+        );
+        expect(outputProperties.startLine).toMatchObject({
+            type: "number",
+        });
+        expect(outputProperties.endLine).toMatchObject({
+            type: "number",
+        });
+        expect(outputProperties.totalLines).toMatchObject({
+            type: "number",
+        });
+        expect(outputProperties.truncated).toMatchObject({
+            type: "boolean",
+        });
+    });
+
+    it("passes lineLimit through executeTool for whole-document pagination", async () => {
+        const { tools } = makeTools({
+            "notes/doc.md": "# Intro\nalpha\n# Details\nbeta",
+        });
+
+        const result = await tools.executeTool("read_note", {
+            path: "notes/doc.md",
+            lineOffset: 2,
+            lineLimit: 2,
+        });
+
+        expect(result).toMatchObject({
+            content: "# Details\nbeta",
+            startLine: 2,
+            endLine: 3,
+            totalLines: 4,
+            truncated: false,
+        });
+    });
+});
+
 describe("readPeriodicNote", () => {
     beforeEach(() => {
         vi.clearAllMocks();
