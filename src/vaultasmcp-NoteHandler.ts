@@ -62,12 +62,17 @@ export class NoteHandler {
         metadataOnly = false,
         lineOffset?: number,
         excludePatterns?: string[],
+        lineLimit?: number,
     ): Promise<{
         content?: string;
         embeds?: LinkRef[];
         links?: LinkRef[];
         outline?: OutlineEntry[];
         frontmatter?: Record<string, unknown>;
+        startLine?: number;
+        endLine?: number;
+        totalLines?: number;
+        truncated?: boolean;
     }> {
         const file = this.getFileWithAclCheck(path);
         const cache = this.app.metadataCache.getFileCache(file);
@@ -97,7 +102,7 @@ export class NoteHandler {
 
         const content = await this.app.vault.cachedRead(file);
 
-        if (heading !== undefined || lineOffset !== undefined) {
+        if (heading !== undefined) {
             return {
                 content: this.extractSection(
                     file,
@@ -108,6 +113,25 @@ export class NoteHandler {
                 embeds,
                 links,
                 frontmatter,
+            };
+        }
+
+        if (lineOffset !== undefined || lineLimit !== undefined) {
+            const window = this.getLineWindow(
+                content,
+                lineOffset ?? 0,
+                lineLimit,
+            );
+            return {
+                content: window.content,
+                embeds,
+                links,
+                outline: this.getOutline(cache),
+                frontmatter,
+                startLine: window.startLine,
+                endLine: window.endLine,
+                totalLines: window.totalLines,
+                truncated: window.truncated,
             };
         }
 
@@ -668,7 +692,6 @@ export class NoteHandler {
      * Trailing newlines terminate the final real line but do not create
      * an extra empty one.
      */
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: wired into readNote in Phase 1 Step 2
     private getLineWindow(
         fileContent: string,
         lineOffset = 0,
