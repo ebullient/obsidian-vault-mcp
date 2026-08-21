@@ -100,6 +100,8 @@ export class NoteHandler {
             };
         }
 
+        this.validateReadNotePaginationInputs(heading, lineOffset, lineLimit);
+
         const content = await this.app.vault.cachedRead(file);
 
         if (heading !== undefined) {
@@ -687,6 +689,31 @@ export class NoteHandler {
         return fileContent.substring(start, end).trim();
     }
 
+    private validateReadNotePaginationInputs(
+        heading: string | undefined,
+        lineOffset: number | undefined,
+        lineLimit: number | undefined,
+    ): void {
+        if (heading !== undefined && lineLimit !== undefined) {
+            throw new Error("lineLimit cannot be used together with heading");
+        }
+
+        if (
+            lineOffset !== undefined &&
+            !this.isNonNegativeInteger(lineOffset)
+        ) {
+            throw new Error(
+                `lineOffset must be a non-negative integer: ${lineOffset}`,
+            );
+        }
+
+        if (lineLimit !== undefined && !this.isPositiveInteger(lineLimit)) {
+            throw new Error(
+                `lineLimit must be a positive integer: ${lineLimit}`,
+            );
+        }
+    }
+
     /**
      * Return the raw file-content window for the requested line range.
      * Trailing newlines terminate the final real line but do not create
@@ -746,6 +773,14 @@ export class NoteHandler {
             }
         }
         return starts;
+    }
+
+    private isNonNegativeInteger(value: number): boolean {
+        return Number.isInteger(value) && value >= 0;
+    }
+
+    private isPositiveInteger(value: number): boolean {
+        return Number.isInteger(value) && value > 0;
     }
 
     private normalize = (value: string): string => {
