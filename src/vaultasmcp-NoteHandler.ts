@@ -686,7 +686,7 @@ export class NoteHandler {
             resolvedIndex,
             fileContent.length,
         );
-        return fileContent.substring(start, end).trim();
+        return fileContent.substring(start, end);
     }
 
     private validateReadNotePaginationInputs(
@@ -726,10 +726,6 @@ export class NoteHandler {
     ): LineWindow {
         const lineStarts = this.getLineStartOffsets(fileContent);
         const totalLines = lineStarts.length;
-
-        if (totalLines === 0) {
-            throw new Error("Cannot paginate an empty note");
-        }
 
         if (lineOffset < 0 || lineOffset >= totalLines) {
             throw new Error(

@@ -835,7 +835,7 @@ describe("NoteHandler.readNote with a section selector", () => {
         expect(result.content).not.toContain("hello");
     });
 
-    it("returns the requested section by lineOffset alone", async () => {
+    it("returns a whole-document line window by lineOffset alone", async () => {
         // "# Introduction\n\nhello\n\n# Details\n\nworld"
         //  0             14 15 16 21 22 23     32 33 34
         const content = "# Introduction\n\nhello\n\n# Details\n\nworld";
@@ -863,8 +863,15 @@ describe("NoteHandler.readNote with a section selector", () => {
             false,
             4,
         );
-        expect(result.content).toContain("world");
-        expect(result.content).not.toContain("hello");
+        expect(result.content).toBe("# Details\n\nworld");
+        expect(result.startLine).toBe(4);
+        expect(result.endLine).toBe(6);
+        expect(result.totalLines).toBe(7);
+        expect(result.truncated).toBe(false);
+        expect(result.outline).toEqual([
+            { text: "Introduction", level: 1, line: 0 },
+            { text: "Details", level: 1, line: 4 },
+        ]);
     });
 
     it("throws when heading and lineOffset disagree (stale outline)", async () => {
@@ -999,7 +1006,7 @@ describe("NoteHandler.readNote with a section selector", () => {
         );
         await expect(
             handler.readNote("notes/plain.md", undefined, false, 12),
-        ).rejects.toThrow("No heading found at line 12");
+        ).rejects.toThrow("lineOffset 12 is out of range for 1 lines");
     });
 
     describe("with duplicate heading names", () => {
@@ -1240,4 +1247,3 @@ describe("NoteHandler.patchNote", () => {
         });
     });
 });
-
