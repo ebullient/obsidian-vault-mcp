@@ -179,8 +179,9 @@ Tool names, parameters, and behavior are defined in
 MCP `tools/list` endpoint — that's the source of truth for exact parameter
 names, types, and descriptions. The summary below is for orientation only.
 
-- `read_note` — Read a note's content by path; optionally filtered to named
-  headings, or metadata-only (links/embeds/outline/frontmatter, no content)
+- `read_note` — Read a note's content by path; optionally filtered to one
+  heading, windowed by file-relative lines, or metadata-only
+  (links/embeds/outline/frontmatter, no content)
 - `read_multiple_notes` — Read several notes in one request (max 10)
 - `search_notes` — Find notes by folder, tag(s), frontmatter, modification
   time, or text content
