@@ -105,6 +105,32 @@ export class MCPTools {
                     },
                 },
                 frontmatter: { type: "object" },
+                startLine: {
+                    type: "number",
+                    description:
+                        "0-based file-relative line number of the " +
+                        "first returned line when whole-document " +
+                        "pagination is used.",
+                },
+                endLine: {
+                    type: "number",
+                    description:
+                        "0-based file-relative line number of the " +
+                        "last returned line when whole-document " +
+                        "pagination is used.",
+                },
+                totalLines: {
+                    type: "number",
+                    description:
+                        "Total line count of the whole document when " +
+                        "whole-document pagination is used.",
+                },
+                truncated: {
+                    type: "boolean",
+                    description:
+                        "Whether additional whole-document lines exist " +
+                        "beyond the returned pagination window.",
+                },
             },
             required: [],
         };
@@ -133,14 +159,15 @@ export class MCPTools {
                 name: "read_note",
                 description:
                     "Read note content by path. Returns raw markdown by " +
-                    "default, optionally filtered to one section; also " +
-                    "returns embeds (direct embed targets), links (direct " +
-                    "outgoing wikilinks), frontmatter, and, when not " +
-                    "filtering to a section, outline (heading list). Pass " +
-                    "metadataOnly: true to skip content and return only " +
-                    "embeds/links/outline/frontmatter — useful for " +
-                    "inspecting a note's structure and connections before " +
-                    "deciding whether to read it in full.",
+                    "default, optionally filtered to one section or " +
+                    "windowed by file-relative lines; also returns embeds " +
+                    "(direct embed targets), links (direct outgoing " +
+                    "wikilinks), frontmatter, and, when not filtering to " +
+                    "a section, outline (heading list). Pass metadataOnly: " +
+                    "true to skip content and return only embeds/links/" +
+                    "outline/frontmatter — useful for inspecting a " +
+                    "note's structure and connections before deciding " +
+                    "whether to read it in full.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -157,19 +184,28 @@ export class MCPTools {
                                 "(case-insensitive, includes subheadings). " +
                                 "Throws if it matches more than one " +
                                 "heading in the note — use lineOffset to " +
-                                "disambiguate. Ignored when metadataOnly " +
-                                "is true.",
+                                "disambiguate. Returns the whole resolved " +
+                                "section. Cannot be combined with lineLimit. " +
+                                "Ignored when metadataOnly is true.",
                         },
                         lineOffset: {
                             type: "number",
                             description:
-                                "Select the section by its heading's " +
-                                "0-based start line, from outline[].line. " +
-                                "Usable alone or with heading, in which " +
-                                "case they must agree or the call throws " +
-                                "(refetch the outline via metadataOnly " +
-                                "and retry). Ignored when metadataOnly " +
-                                "is true.",
+                                "When heading is absent, start a whole-" +
+                                "document read at this 0-based file-relative " +
+                                "line. When heading is present, select or " +
+                                "disambiguate the section by that heading's " +
+                                "0-based start line from outline[].line; " +
+                                "heading and lineOffset must agree or the " +
+                                "call throws. Ignored when metadataOnly is true.",
+                        },
+                        lineLimit: {
+                            type: "number",
+                            description:
+                                "Number of whole-document lines to return, " +
+                                "starting at lineOffset or line 0 if " +
+                                "lineOffset is omitted. Cannot be combined " +
+                                "with heading. Ignored when metadataOnly is true.",
                         },
                         metadataOnly: {
                             type: "boolean",
@@ -695,6 +731,7 @@ export class MCPTools {
                     args.metadataOnly as boolean | undefined,
                     args.lineOffset as number | undefined,
                     args.excludePatterns as string[] | undefined,
+                    args.lineLimit as number | undefined,
                 );
             case "read_multiple_notes":
                 return await this.readMultipleNotes(
@@ -770,12 +807,17 @@ export class MCPTools {
         metadataOnly?: boolean,
         lineOffset?: number,
         excludePatterns?: string[],
+        lineLimit?: number,
     ): Promise<{
         content?: string;
         embeds?: { path: string; subpath?: string }[];
         links?: { path: string; subpath?: string }[];
         outline?: { text: string; level: number; line: number }[];
         frontmatter?: Record<string, unknown>;
+        startLine?: number;
+        endLine?: number;
+        totalLines?: number;
+        truncated?: boolean;
     }> {
         return await this.noteHandler.readNote(
             path,
@@ -783,6 +825,7 @@ export class MCPTools {
             metadataOnly,
             lineOffset,
             excludePatterns,
+            lineLimit,
         );
     }
 
