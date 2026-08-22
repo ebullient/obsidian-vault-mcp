@@ -19,6 +19,13 @@ type LineWindow = {
     truncated: boolean;
 };
 
+const SINGLE_QUOTE_VARIANTS = "\u2018\u2019\u201a\u201b\u2032\u2035";
+const DOUBLE_QUOTE_VARIANTS = "\u201c\u201d\u201e\u201f\u2033\u2036";
+const SINGLE_QUOTE_VARIANTS_RE = new RegExp(`[${SINGLE_QUOTE_VARIANTS}]`, "g");
+const DOUBLE_QUOTE_VARIANTS_RE = new RegExp(`[${DOUBLE_QUOTE_VARIANTS}]`, "g");
+const SINGLE_QUOTE_VARIANTS_SET = new Set(SINGLE_QUOTE_VARIANTS);
+const DOUBLE_QUOTE_VARIANTS_SET = new Set(DOUBLE_QUOTE_VARIANTS);
+
 /**
  * Handles all note CRUD operations with ACL enforcement
  */
@@ -805,8 +812,8 @@ export class NoteHandler {
         let result = value.replace(/\r\n/g, "\n");
         if (this.current.normalizeQuotes()) {
             result = result
-                .replace(/[\u2018\u2019\u201a\u201b\u2032\u2035]/g, "'")
-                .replace(/[\u201c\u201d\u201e\u201f\u2033\u2036]/g, '"');
+                .replace(SINGLE_QUOTE_VARIANTS_RE, "'")
+                .replace(DOUBLE_QUOTE_VARIANTS_RE, '"');
         }
         return result;
     };
@@ -831,13 +838,7 @@ export class NoteHandler {
             }
 
             if (this.current.normalizeQuotes()) {
-                if (/[\u2018\u2019\u201a\u201b\u2032\u2035]/.test(char)) {
-                    normalizedChar = "'";
-                } else if (
-                    /[\u201c\u201d\u201e\u201f\u2033\u2036]/.test(char)
-                ) {
-                    normalizedChar = '"';
-                }
+                normalizedChar = this.normalizeQuoteChar(char);
             }
 
             offsets.push(i);
@@ -851,6 +852,16 @@ export class NoteHandler {
     private withLineEndings(value: string, useCRLF: boolean): string {
         const normalized = value.replace(/\r\n/g, "\n");
         return useCRLF ? normalized.replace(/\n/g, "\r\n") : normalized;
+    }
+
+    private normalizeQuoteChar(char: string): string {
+        if (SINGLE_QUOTE_VARIANTS_SET.has(char)) {
+            return "'";
+        }
+        if (DOUBLE_QUOTE_VARIANTS_SET.has(char)) {
+            return '"';
+        }
+        return char;
     }
 
     private normalizeHeading = (value: string): string => {
