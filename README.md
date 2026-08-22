@@ -189,8 +189,12 @@ names, types, and descriptions. The summary below is for orientation only.
 - `create_note` — Create a note or binary file, optionally from a template
 - `append_to_note` — Append content to a note, at the end or after a heading
 - `update_note` — Replace a note's entire content
-- `patch_note` — Replace an exact string in a note; prefer over `update_note`
-  for surgical edits
+- `patch_note` — Replace an exact string in a note using `old_text` and
+  `new_text`; prefer over `update_note` for surgical edits. Matching is
+  exact, so use enough surrounding context to make `old_text` unique, and
+  pass literal quote characters directly rather than over-escaping them.
+  When exact text appears multiple times, optional `lineOffset` can pick the
+  nearest 0-based file line.
 - `delete_note` — Move a note to the system trash
 - `rename_note` — Rename or move a note, rewriting links that point to it
 - `read_periodic_note` — Get the path (and content, if it exists) for a

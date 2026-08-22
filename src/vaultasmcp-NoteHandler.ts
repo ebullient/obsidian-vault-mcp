@@ -402,81 +402,103 @@ export class NoteHandler {
 
     /**
      * Patch a note by replacing an exact string with new text.
-     * Optionally scoped to a named heading's section (heading + its
-     * content). Errors if old_text is not found, or found more than once.
+     * Replace exact text in a note. Errors if old_text is not found,
+     * or found more than once.
      * ACL: Requires write access
      */
     async patchNote(
         path: string,
         oldText: string,
         newText: string,
-        heading?: string,
         lineOffset?: number,
     ): Promise<{ path: string }> {
         if (!path) throw new Error("path is required");
         if (!oldText) throw new Error("old_text is required");
         if (newText === undefined || newText === null)
             throw new Error("new_text is required");
+        if (lineOffset !== undefined && lineOffset < 0) {
+            throw new Error(
+                "lineOffset must be a non-negative 0-based file line",
+            );
+        }
         const file = this.getFileWithAclCheck(path, true);
 
         await this.app.vault.process(file, (data) => {
             const hasCRLF = data.includes("\r\n");
-            const normalizedData = this.normalize(data);
+            const normalizedData = this.normalizeWithOffsetMap(data);
             const normalizedOldText = this.normalize(oldText);
 
-            let searchIn = normalizedData;
-            let searchOffset = 0;
-            let resolvedHeading: string | undefined;
+            const matches: { idx: number; line: number }[] = [];
+            let searchFrom = 0;
+            let scanFrom = 0;
+            let currentLine = 0;
+            while (searchFrom <= normalizedData.content.length) {
+                const idx = normalizedData.content.indexOf(
+                    normalizedOldText,
+                    searchFrom,
+                );
+                if (idx === -1) {
+                    break;
+                }
 
-            if (heading !== undefined || lineOffset !== undefined) {
-                const cache = this.app.metadataCache.getFileCache(file);
-                if (!cache?.headings) {
+                for (let i = scanFrom; i < idx; i++) {
+                    if (normalizedData.content[i] === "\n") {
+                        currentLine++;
+                    }
+                }
+
+                matches.push({ idx, line: currentLine });
+                scanFrom = idx;
+                searchFrom = idx + 1;
+            }
+
+            if (matches.length === 0) {
+                throw new Error("Text not found in note");
+            }
+
+            let idx = matches[0].idx;
+            if (matches.length > 1) {
+                if (lineOffset === undefined) {
                     throw new Error(
-                        "Section lookup unavailable: note metadata not " +
-                            "indexed yet. Retry in a moment.",
+                        "Text appears more than once in note; " +
+                            "provide more context to make it unique",
                     );
                 }
-                const resolvedIndex = this.resolveHeadingIndex(
-                    cache.headings,
-                    heading,
-                    lineOffset,
-                );
-                const start =
-                    cache.headings[resolvedIndex].position.start.offset;
-                const end = this.findSectionEnd(
-                    cache.headings,
-                    resolvedIndex,
-                    normalizedData.length,
-                );
-                searchIn = normalizedData.substring(start, end);
-                searchOffset = start;
-                resolvedHeading = cache.headings[resolvedIndex].heading;
+
+                let bestMatch = matches[0];
+                let bestDistance = Math.abs(bestMatch.line - lineOffset);
+                let tied = false;
+
+                for (const match of matches.slice(1)) {
+                    const distance = Math.abs(match.line - lineOffset);
+                    if (distance < bestDistance) {
+                        bestMatch = match;
+                        bestDistance = distance;
+                        tied = false;
+                    } else if (distance === bestDistance) {
+                        tied = true;
+                    }
+                }
+
+                if (tied) {
+                    throw new Error(
+                        "Text appears more than once in note; " +
+                            "provide more context to make it unique",
+                    );
+                }
+                idx = bestMatch.idx;
             }
 
-            const idx = searchIn.indexOf(normalizedOldText);
-            if (idx === -1) {
-                throw new Error(
-                    resolvedHeading
-                        ? `Text not found in section "${resolvedHeading}"`
-                        : "Text not found in note",
-                );
-            }
-            if (searchIn.indexOf(normalizedOldText, idx + 1) !== -1) {
-                throw new Error(
-                    resolvedHeading
-                        ? `Text appears more than once in section "${resolvedHeading}"; ` +
-                              "provide more context to make it unique"
-                        : "Text appears more than once in note; " +
-                              "provide more context to make it unique",
-                );
-            }
+            const originalStart = normalizedData.offsets[idx];
+            const originalEnd =
+                normalizedData.offsets[idx + normalizedOldText.length];
+            const replacement = this.withLineEndings(newText, hasCRLF);
 
-            const absIdx = searchOffset + idx;
-            const result =
-                normalizedData.substring(0, absIdx) +
-                newText +
-                normalizedData.substring(absIdx + normalizedOldText.length);
-            return hasCRLF ? result.replace(/\n/g, "\r\n") : result;
+            return (
+                data.substring(0, originalStart) +
+                replacement +
+                data.substring(originalEnd)
+            );
         });
 
         this.logger.debug(`Patched note: ${file.path}`);
@@ -788,6 +810,48 @@ export class NoteHandler {
         }
         return result;
     };
+
+    private normalizeWithOffsetMap(value: string): {
+        content: string;
+        offsets: number[];
+    } {
+        let content = "";
+        const offsets: number[] = [];
+
+        for (let i = 0; i < value.length; i++) {
+            const char = value[i];
+            let normalizedChar = char;
+
+            if (char === "\r" && value[i + 1] === "\n") {
+                normalizedChar = "\n";
+                offsets.push(i);
+                content += normalizedChar;
+                i++;
+                continue;
+            }
+
+            if (this.current.normalizeQuotes()) {
+                if (/[\u2018\u2019\u201a\u201b\u2032\u2035]/.test(char)) {
+                    normalizedChar = "'";
+                } else if (
+                    /[\u201c\u201d\u201e\u201f\u2033\u2036]/.test(char)
+                ) {
+                    normalizedChar = '"';
+                }
+            }
+
+            offsets.push(i);
+            content += normalizedChar;
+        }
+
+        offsets.push(value.length);
+        return { content, offsets };
+    }
+
+    private withLineEndings(value: string, useCRLF: boolean): string {
+        const normalized = value.replace(/\r\n/g, "\n");
+        return useCRLF ? normalized.replace(/\n/g, "\r\n") : normalized;
+    }
 
     private normalizeHeading = (value: string): string => {
         let decoded = value;

@@ -557,9 +557,7 @@ export class MCPTools {
                     "Replace an exact string in a note; " +
                     "prefer over update_note for surgical edits. " +
                     "Fails if old_text is not found or is not unique " +
-                    "(include surrounding context to disambiguate). " +
-                    "Also throws if heading matches more than one " +
-                    "heading in the note — see lineOffset.",
+                    "(include surrounding context to disambiguate).",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -573,22 +571,12 @@ export class MCPTools {
                             type: "string",
                             description: "Replacement text.",
                         },
-                        heading: {
-                            type: "string",
-                            description:
-                                "Scope search to this heading's section " +
-                                "(case-insensitive). Throws if the text " +
-                                "matches more than one heading — use " +
-                                "lineOffset to disambiguate.",
-                        },
                         lineOffset: {
                             type: "number",
                             description:
-                                "Select the heading by its 0-based start " +
-                                "line, from outline[].line. Usable alone " +
-                                "or with heading, in which case they must " +
-                                "agree or the call throws (refetch the " +
-                                "outline via metadataOnly and retry).",
+                                "Optional 0-based file line used to " +
+                                "disambiguate duplicate exact matches by " +
+                                "choosing the nearest occurrence.",
                         },
                     },
                     required: ["path", "old_text", "new_text"],
@@ -773,7 +761,6 @@ export class MCPTools {
                     args.path as string,
                     args.old_text as string,
                     args.new_text as string,
-                    args.heading as string | undefined,
                     args.lineOffset as number | undefined,
                 );
             case "update_note":

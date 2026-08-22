@@ -1288,33 +1288,6 @@ describe("NoteHandler.patchNote", () => {
         ).rejects.toThrow("Text appears more than once");
     });
 
-    it("names the resolved section, not the note, when scoped by lineOffset alone", async () => {
-        // "# Intro\nhello\n# Details\nfoo foo"
-        //  0      7 8    13 14      23 24
-        const content = "# Intro\nhello\n# Details\nfoo foo";
-        const { handler, app } = makeHandler(openSettings, {
-            "notes/doc.md": content,
-        });
-        (app.metadataCache as unknown as MetadataCache).setCache__(
-            "notes/doc.md",
-            makeCache(
-                [
-                    { text: "Intro",   level: 1, start: 0,  end: 7,  line: 0 },
-                    { text: "Details", level: 1, start: 14, end: 23, line: 2 },
-                ],
-                [],
-            ),
-        );
-        await expect(
-            handler.patchNote("notes/doc.md", "missing", "x", undefined, 2),
-        ).rejects.toThrow('Text not found in section "Details"');
-        await expect(
-            handler.patchNote("notes/doc.md", "foo", "x", undefined, 2),
-        ).rejects.toThrow(
-            'Text appears more than once in section "Details"',
-        );
-    });
-
     it("normalizes CRLF in file and old_text before matching", async () => {
         const { handler } = makeHandler(openSettings, {
             "notes/doc.md": "line one\r\nline two\r\nline three",
@@ -1350,6 +1323,17 @@ describe("NoteHandler.patchNote", () => {
         expect(result.content).toBe("redacted");
     });
 
+    it("normalizes quotes for matching without rewriting untouched note text", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/doc.md": "Intro “smart” text\nTARGET\nOutro ‘smart’ text",
+        });
+        await handler.patchNote("notes/doc.md", "TARGET", "patched");
+        const result = await handler.readNote("notes/doc.md");
+        expect(result.content).toBe(
+            "Intro “smart” text\npatched\nOutro ‘smart’ text",
+        );
+    });
+
     it("does not match curly quotes when normalizeQuotes is off", async () => {
         const noNormSettings: CurrentSettings = {
             ...openSettings,
@@ -1363,79 +1347,32 @@ describe("NoteHandler.patchNote", () => {
         ).rejects.toThrow("Text not found in note");
     });
 
-    describe("with a duplicate heading", () => {
-        // "# Notes\ntarget\n# Notes\ntarget"
-        //  0      7 8     14 15   22 23
-        const content = "# Notes\ntarget\n# Notes\ntarget";
-
-        function makeDuplicateHandler() {
-            const { handler, app } = makeHandler(openSettings, {
-                "notes/doc.md": content,
-            });
-            (app.metadataCache as unknown as MetadataCache).setCache__(
-                "notes/doc.md",
-                makeCache(
-                    [
-                        { text: "Notes", level: 1, start: 0,  end: 7,  line: 0 },
-                        { text: "Notes", level: 1, start: 15, end: 22, line: 2 },
-                    ],
-                    [],
-                ),
-            );
-            return handler;
-        }
-
-        it("throws when section matches more than one heading", async () => {
-            const handler = makeDuplicateHandler();
-            await expect(
-                handler.patchNote("notes/doc.md", "target", "x", "Notes"),
-            ).rejects.toThrow('Heading "Notes" is ambiguous (2 matches)');
+    it("treats duplicate matches as note-wide even across headings", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/doc.md": "# Notes\ntarget\n# Notes\ntarget",
         });
+        await expect(
+            handler.patchNote("notes/doc.md", "target", "x"),
+        ).rejects.toThrow("Text appears more than once in note");
+    });
 
-        it("names lineOffset in the ambiguity error", async () => {
-            const handler = makeDuplicateHandler();
-            await expect(
-                handler.patchNote("notes/doc.md", "target", "x", "Notes"),
-            ).rejects.toThrow("pass lineOffset to select");
+    it("uses lineOffset to select the nearest duplicate match by file line", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/doc.md": "alpha\ntarget\nbeta\ngamma\ntarget\ndelta",
         });
+        await handler.patchNote("notes/doc.md", "target", "patched", 4);
+        const result = await handler.readNote("notes/doc.md");
+        expect(result.content).toBe(
+            "alpha\ntarget\nbeta\ngamma\npatched\ndelta",
+        );
+    });
 
-        it("patches the occurrence selected via lineOffset", async () => {
-            const handler = makeDuplicateHandler();
-            await handler.patchNote(
-                "notes/doc.md",
-                "target",
-                "patched",
-                "Notes",
-                2,
-            );
-            const result = await handler.readNote("notes/doc.md");
-            expect(result.content).toBe("# Notes\ntarget\n# Notes\npatched");
+    it("throws when lineOffset is equally close to multiple duplicate matches", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/doc.md": "target\nmiddle\ntarget",
         });
-
-        it("patches the section selected via lineOffset alone", async () => {
-            const handler = makeDuplicateHandler();
-            await handler.patchNote(
-                "notes/doc.md",
-                "target",
-                "patched",
-                undefined,
-                0,
-            );
-            const result = await handler.readNote("notes/doc.md");
-            expect(result.content).toBe("# Notes\npatched\n# Notes\ntarget");
-        });
-
-        it("throws when heading and lineOffset disagree (stale outline)", async () => {
-            const handler = makeDuplicateHandler();
-            await expect(
-                handler.patchNote(
-                    "notes/doc.md",
-                    "target",
-                    "x",
-                    "Wrong",
-                    0,
-                ),
-            ).rejects.toThrow('Heading at line 0 is "Notes", not "Wrong"');
-        });
+        await expect(
+            handler.patchNote("notes/doc.md", "target", "patched", 1),
+        ).rejects.toThrow("Text appears more than once in note");
     });
 });

@@ -121,6 +121,39 @@ describe("read_note tool surface", () => {
     });
 });
 
+describe("patch_note tool surface", () => {
+    it("exposes exact find/replace inputs with optional lineOffset", () => {
+        const { tools } = makeTools({});
+        const patchNote = tools
+            .getToolDefinitions()
+            .find((tool) => tool.name === "patch_note");
+
+        expect(patchNote).toBeDefined();
+        if (!patchNote) {
+            throw new Error("patch_note tool definition not found");
+        }
+
+        const inputProperties = patchNote.inputSchema.properties as Record<
+            string,
+            { type?: string; description?: string }
+        >;
+
+        expect(inputProperties.path).toMatchObject({ type: "string" });
+        expect(inputProperties.old_text).toMatchObject({ type: "string" });
+        expect(inputProperties.new_text).toMatchObject({ type: "string" });
+        expect(inputProperties.lineOffset).toMatchObject({ type: "number" });
+        expect(inputProperties.heading).toBeUndefined();
+        expect(inputProperties.lineOffset?.description).toContain(
+            "0-based file line",
+        );
+        expect(patchNote.inputSchema.required).toEqual([
+            "path",
+            "old_text",
+            "new_text",
+        ]);
+    });
+});
+
 describe("readPeriodicNote", () => {
     beforeEach(() => {
         vi.clearAllMocks();
