@@ -6,15 +6,15 @@ An Obsidian plugin that runs an MCP (Model Context Protocol) server, enabling ex
 
 > **Important Notes**
 >
-> - **Network Use**: This plugin runs a local HTTP server on your machine. It does not connect to external services.
-> - **Privacy**: No telemetry or data collection. All data stays on your machine.
+> - **Network Use**: This plugin runs a local HTTP server on your machine to accept inbound MCP connections. It does not send your vault data to external LLM services by itself.
+> - **Privacy**: This plugin lets you control vault access through Obsidian APIs and path ACLs instead of giving external tools direct filesystem access.
 > - **Desktop Only**: This plugin requires a desktop environment and will not work on mobile devices.
 
 ## Features
 
 - **HTTP-based MCP server**: Runs a Fastify server implementing the MCP protocol
 - **Status Bar Indicator**: Shows server status (stopped/running/error) with click-to-toggle functionality
-- **Configurable Settings**: Adjust server port, auto-start behavior, and log level
+- **Configurable Settings**: Adjust server port, auto-start behavior, logging, and path ACLs to control access to areas of your vault
 - **CORS Support**: Enables access from remote machines via Tailscale or local network
 - **MCP Tools**: Note read/write, search, templates, and periodic notes — see [MCP Tools Reference](#mcp-tools-reference)
 
@@ -182,7 +182,7 @@ names, types, and descriptions. The summary below is for orientation only.
 - `read_note` — Read a note's content by path; optionally filtered to one
   heading, windowed by file-relative lines, or metadata-only
   (links/embeds/outline/frontmatter, no content)
-- `read_multiple_notes` — Read several notes in one request (max 10)
+- `read_multiple_notes` — Read several notes in one request (max 25)
 - `search_notes` — Find notes by folder, tag(s), frontmatter, modification
   time, or text content
 - `list_notes` — List notes and subfolders in a directory (non-recursive)
