@@ -5,12 +5,11 @@ import {
     normalizePath,
     TFile,
 } from "obsidian";
+import type { LinkRef, NoteReadResult, OutlineEntry } from "./@types/notes";
 import type { CurrentSettings, Logger } from "./@types/settings";
 import type { PathACLChecker } from "./vaultasmcp-PathACL";
 import type { TemplateHandler } from "./vaultasmcp-TemplateHandler";
 
-type LinkRef = { path: string; subpath?: string };
-type OutlineEntry = { text: string; level: number; line: number };
 type LineWindow = {
     content: string;
     startLine: number;
@@ -70,18 +69,7 @@ export class NoteHandler {
         lineOffset?: number,
         excludePatterns?: string[],
         lineLimit?: number,
-    ): Promise<{
-        content?: string;
-        embeds?: LinkRef[];
-        links?: LinkRef[];
-        outline?: OutlineEntry[];
-        frontmatter?: Record<string, unknown>;
-        startLine?: number;
-        endLine?: number;
-        totalLines?: number;
-        truncated?: boolean;
-        sizeBytes?: number;
-    }> {
+    ): Promise<NoteReadResult> {
         const file = this.getFileWithAclCheck(path);
         const cache = this.app.metadataCache.getFileCache(file);
         const compiledPatterns = this.compileExcludePatterns(

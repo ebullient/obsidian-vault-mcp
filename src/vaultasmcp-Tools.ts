@@ -24,6 +24,7 @@ import {
     getWeeklyNote,
     type IGranularity,
 } from "obsidian-daily-notes-interface";
+import type { NoteReadResult } from "./@types/notes";
 import type { CurrentSettings, Logger, MCPTool } from "./@types/settings";
 import { momentFn } from "./vaultasmcp-moment";
 import { NoteHandler } from "./vaultasmcp-NoteHandler";
@@ -808,18 +809,7 @@ export class MCPTools {
         lineOffset?: number,
         excludePatterns?: string[],
         lineLimit?: number,
-    ): Promise<{
-        content?: string;
-        embeds?: { path: string; subpath?: string }[];
-        links?: { path: string; subpath?: string }[];
-        outline?: { text: string; level: number; line: number }[];
-        frontmatter?: Record<string, unknown>;
-        startLine?: number;
-        endLine?: number;
-        totalLines?: number;
-        truncated?: boolean;
-        sizeBytes?: number;
-    }> {
+    ): Promise<NoteReadResult> {
         return await this.noteHandler.readNote(
             path,
             heading,
@@ -834,22 +824,7 @@ export class MCPTools {
         paths: string[],
         metadataOnly?: boolean,
     ): Promise<{
-        notes: Record<
-            string,
-            {
-                content?: string;
-                embeds?: { path: string; subpath?: string }[];
-                links?: { path: string; subpath?: string }[];
-                outline?: {
-                    text: string;
-                    level: number;
-                    line: number;
-                }[];
-                frontmatter?: Record<string, unknown>;
-                sizeBytes?: number;
-                error?: string;
-            }
-        >;
+        notes: Record<string, NoteReadResult & { error?: string }>;
     }> {
         if (paths.length > MAX_READ_MULTIPLE_PATHS) {
             throw new Error(
@@ -859,22 +834,7 @@ export class MCPTools {
             );
         }
 
-        const results: Record<
-            string,
-            {
-                content?: string;
-                embeds?: { path: string; subpath?: string }[];
-                links?: { path: string; subpath?: string }[];
-                outline?: {
-                    text: string;
-                    level: number;
-                    line: number;
-                }[];
-                frontmatter?: Record<string, unknown>;
-                sizeBytes?: number;
-                error?: string;
-            }
-        > = {};
+        const results: Record<string, NoteReadResult & { error?: string }> = {};
 
         for (const path of paths) {
             try {
