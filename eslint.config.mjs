@@ -36,7 +36,7 @@ export default defineConfig([
                 "warn",
                 {
                     brands: ["Obsidian", "Open WebUI", "notes/**\ndrafts/**", "archive/**\ntemplates/**", "private/**\nsecrets.md"],
-                    acronyms: ["VMCP", "MCP", "URL", "ACL", "PEM"],
+                    acronyms: ["VMCP", "MCP", "URL", "ACL", "PEM", "SSL", "HTTPS"],
                     enforceCamelCaseLower: true,
                 }
             ]
