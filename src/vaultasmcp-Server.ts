@@ -24,8 +24,20 @@ export class MCPServer {
             throw new Error("Server is already running");
         }
 
+        const tlsEnabled = this.current.tlsEnabled();
+        const tlsCertificatePem = this.current.tlsCertificatePem();
+        const tlsPrivateKeyPem = this.current.getTlsPrivateKeyPem();
+
         this.server = Fastify({
             logger: false,
+            ...(tlsEnabled
+                ? {
+                      https: {
+                          cert: tlsCertificatePem,
+                          key: tlsPrivateKeyPem,
+                      },
+                  }
+                : {}),
         });
 
         // Register CORS for Tailscale network access
@@ -128,7 +140,17 @@ export class MCPServer {
                 port: this.port,
                 host: host,
             });
-            this.logger.debug("Server started on", `${host}:${this.port}`);
+            if (host === "127.0.0.1") {
+                this.logger.debug(
+                    "Server started on",
+                    `${tlsEnabled ? "https" : "http"}://localhost:${this.port}`,
+                );
+            } else {
+                this.logger.debug(
+                    "Server started on",
+                    `port ${this.port} using ${tlsEnabled ? "HTTPS" : "HTTP"} (bound to all interfaces)`,
+                );
+            }
         } catch (error) {
             this.server = null;
             throw error;

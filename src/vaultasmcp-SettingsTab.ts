@@ -6,13 +6,20 @@ import {
     type Setting,
     type SettingDefinitionItem,
 } from "obsidian";
+import { TLS_PRIVATE_KEY_SECRET_ID } from "./vaultasmcp-Constants";
 import { PathACLTestModal } from "./vaultasmcp-PathACLTestModal";
 import type { VaultAsMCPPlugin } from "./vaultasmcp-Plugin";
+import { validateTlsConfiguration } from "./vaultasmcp-Security";
+import {
+    type SSLConfigDraft,
+    SSLConfigModal,
+} from "./vaultasmcp-SSLConfigModal";
 import { MCPTools } from "./vaultasmcp-Tools";
 
 export class VaultAsMCPSettingsTab extends PluginSettingTab {
     plugin: VaultAsMCPPlugin;
     private showBearerToken = false;
+    private readonly restartSettingKeys = new Set(["serverHost", "serverPort"]);
 
     constructor(app: App, plugin: VaultAsMCPPlugin) {
         super(app, plugin);
@@ -20,20 +27,105 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
         this.icon = "brain-circuit";
     }
 
-    private async saveAndMaybeRestart(
-        prevPort: number,
-        prevHost: string,
+    private async restartServerIfNeeded(
+        changed: boolean,
+        restartRequired: boolean,
     ): Promise<void> {
         try {
-            await this.plugin.saveSettings();
-            const portChanged = this.plugin.settings.serverPort !== prevPort;
-            const hostChanged = this.plugin.settings.serverHost !== prevHost;
             if (
-                (portChanged || hostChanged) &&
+                changed &&
+                restartRequired &&
                 this.plugin.getServerStatus() === "running"
             ) {
                 await this.plugin.restartServer();
             }
+        } catch (error) {
+            new Notice("Failed to apply updated server settings.");
+            this.plugin.error(error, "Restart server error");
+        }
+    }
+
+    private async applySslConfiguration(draft: SSLConfigDraft): Promise<void> {
+        const previous = {
+            tlsEnabled: this.plugin.settings.tlsEnabled ?? false,
+            tlsCertificatePem: this.plugin.settings.tlsCertificatePem,
+            tlsPrivateKeySecretId: this.plugin.settings.tlsPrivateKeySecretId,
+        };
+        const resultingPrivateKeyPem = draft.clearStoredPrivateKey
+            ? draft.tlsPrivateKeyPem
+            : (draft.tlsPrivateKeyPem ?? this.plugin.getTlsPrivateKeyPem());
+        const validationError = validateTlsConfiguration(
+            draft.tlsEnabled,
+            draft.tlsCertificatePem,
+            resultingPrivateKeyPem,
+        );
+
+        if (validationError) {
+            throw new Error(validationError);
+        }
+
+        if (draft.clearStoredPrivateKey) {
+            this.plugin.clearStoredTlsPrivateKeyPem();
+        }
+        if (draft.tlsPrivateKeyPem) {
+            this.plugin.storeTlsPrivateKeyPem(draft.tlsPrivateKeyPem);
+        }
+
+        this.plugin.settings.tlsEnabled = draft.tlsEnabled;
+        this.plugin.settings.tlsCertificatePem = draft.tlsCertificatePem;
+        this.plugin.settings.tlsPrivateKeySecretId = draft.clearStoredPrivateKey
+            ? undefined
+            : draft.tlsPrivateKeyPem ||
+                this.plugin.settings.tlsPrivateKeySecretId
+              ? TLS_PRIVATE_KEY_SECRET_ID
+              : undefined;
+
+        await this.plugin.saveSettings();
+
+        const changed =
+            previous.tlsEnabled !== this.plugin.settings.tlsEnabled ||
+            previous.tlsCertificatePem !==
+                this.plugin.settings.tlsCertificatePem ||
+            previous.tlsPrivateKeySecretId !==
+                this.plugin.settings.tlsPrivateKeySecretId ||
+            draft.clearStoredPrivateKey ||
+            !!draft.tlsPrivateKeyPem;
+
+        await this.restartServerIfNeeded(changed, true);
+        new Notice("SSL settings updated.");
+    }
+
+    private sslSummary(): string {
+        const protocol = this.plugin.tlsEnabled()
+            ? "HTTPS enabled"
+            : "HTTPS disabled";
+        const certificate = this.plugin.tlsCertificatePem()
+            ? "certificate configured"
+            : "certificate missing";
+        const privateKey = this.plugin.hasStoredTlsPrivateKey()
+            ? "private key stored"
+            : "private key missing";
+
+        return `${protocol}; ${certificate}; ${privateKey}.`;
+    }
+
+    override async setControlValue(key: string, value: unknown): Promise<void> {
+        const settingsKey = key as keyof typeof this.plugin.settings;
+        const previous = this.plugin.settings[settingsKey];
+        const changed = previous !== value;
+
+        if (!changed) {
+            return;
+        }
+
+        this.plugin.settings[settingsKey] = value as never;
+
+        try {
+            await this.plugin.saveSettings();
+            await this.restartServerIfNeeded(
+                true,
+                this.restartSettingKeys.has(key),
+            );
         } catch (error) {
             new Notice("Failed to save settings.");
             this.plugin.error(error, "Save settings error");
@@ -106,7 +198,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                     },
                     {
                         name: "Server host",
-                        desc: "Network interface to bind the server to; localhost (127.0.0.1) is recommended for security; use 0.0.0.0 with a bearer token only if you need network access.",
+                        desc: "Network interface to bind the server to; localhost (127.0.0.1) is recommended for security; 0.0.0.0 requires a bearer token and should only be used when you need network access.",
                         render: (setting: Setting) => {
                             setting.addDropdown((dropdown) =>
                                 dropdown
@@ -130,11 +222,9 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                                                 5000,
                                             );
                                         }
-                                        const prev = s.serverHost;
-                                        s.serverHost = value;
-                                        await this.saveAndMaybeRestart(
-                                            s.serverPort,
-                                            prev,
+                                        await this.setControlValue(
+                                            "serverHost",
+                                            value,
                                         );
                                     }),
                             );
@@ -142,33 +232,18 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                     },
                     {
                         name: "Server port",
-                        desc: "Port number for the MCP server; requires restart.",
-                        render: (setting: Setting) => {
-                            setting.addText((text) =>
-                                text
-                                    .setPlaceholder("8765")
-                                    .setValue(String(s.serverPort))
-                                    .onChange(async (value) => {
-                                        const port = Number.parseInt(value, 10);
-                                        if (
-                                            !Number.isNaN(port) &&
-                                            port > 0 &&
-                                            port < 65536
-                                        ) {
-                                            const prev = s.serverPort;
-                                            s.serverPort = port;
-                                            await this.saveAndMaybeRestart(
-                                                prev,
-                                                s.serverHost,
-                                            );
-                                        }
-                                    }),
-                            );
+                        desc: "Port number for the MCP server; changing it restarts the server if it is running.",
+                        control: {
+                            type: "number",
+                            key: "serverPort",
+                            min: 1,
+                            max: 65535,
+                            placeholder: "8765",
                         },
                     },
                     {
                         name: "Bearer token",
-                        desc: "Optional authentication token; required when using network access; leave empty to disable authentication.",
+                        desc: "Authentication token for MCP requests; required when server host is 0.0.0.0; leave empty to disable authentication for localhost-only use.",
                         render: (setting: Setting) => {
                             setting
                                 .addText((text) => {
@@ -177,9 +252,10 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                                     )
                                         .setValue(s.bearerToken ?? "")
                                         .onChange(async (value) => {
-                                            s.bearerToken =
-                                                value.trim() || undefined;
-                                            await this.plugin.saveSettings();
+                                            await this.setControlValue(
+                                                "bearerToken",
+                                                value.trim() || undefined,
+                                            );
                                         });
                                     text.inputEl.type = this.showBearerToken
                                         ? "text"
@@ -215,8 +291,10 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                                                 randomBytes(32).toString(
                                                     "base64url",
                                                 );
-                                            s.bearerToken = token;
-                                            await this.plugin.saveSettings();
+                                            await this.setControlValue(
+                                                "bearerToken",
+                                                token,
+                                            );
                                             this.update();
                                         }),
                                 )
@@ -227,8 +305,10 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                                             "Remove authentication token",
                                         )
                                         .onClick(async () => {
-                                            s.bearerToken = undefined;
-                                            await this.plugin.saveSettings();
+                                            await this.setControlValue(
+                                                "bearerToken",
+                                                undefined,
+                                            );
                                             this.update();
                                         }),
                                 );
@@ -236,7 +316,6 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                     },
                 ],
             },
-
             // Path access control
             {
                 type: "group",
@@ -343,6 +422,41 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                     },
                 ],
             },
+            {
+                type: "group",
+                heading: "Advanced - SSL",
+                items: [
+                    {
+                        name: "SSL configuration",
+                        desc: `Recommended if the MCP server is exposed beyond localhost. ${this.sslSummary()}`,
+                        render: (setting: Setting) => {
+                            setting.addButton((button) =>
+                                button
+                                    .setButtonText("Configure SSL")
+                                    .onClick(() => {
+                                        new SSLConfigModal(
+                                            this.app,
+                                            {
+                                                tlsEnabled:
+                                                    this.plugin.tlsEnabled(),
+                                                tlsCertificatePem:
+                                                    this.plugin.tlsCertificatePem(),
+                                                hasStoredPrivateKey:
+                                                    this.plugin.hasStoredTlsPrivateKey(),
+                                            },
+                                            async (draft) => {
+                                                await this.applySslConfiguration(
+                                                    draft,
+                                                );
+                                                this.update();
+                                            },
+                                        ).open();
+                                    }),
+                            );
+                        },
+                    },
+                ],
+            },
 
             // MCP tools list
             {
@@ -403,12 +517,26 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
         if (status === "running") {
             const infoDiv = container.createDiv();
             const p = infoDiv.createEl("p");
-            p.createSpan({ text: "Connection URL for Open WebUI:" });
-            const codeEl = p.createEl("code");
-            codeEl.setText(
-                `http://localhost:${this.plugin.settings.serverPort}/mcp`,
-            );
-            codeEl.addClass("vault-mcp-connection-url");
+            if (
+                this.plugin.settings.serverHost === "127.0.0.1" ||
+                !this.plugin.tlsEnabled()
+            ) {
+                p.createSpan({ text: "Connection URL for Open WebUI:" });
+                const localHost =
+                    this.plugin.settings.serverHost === "127.0.0.1"
+                        ? "localhost"
+                        : "127.0.0.1";
+                const url = `${this.plugin.protocol()}://${localHost}:${this.plugin.settings.serverPort}/mcp`;
+                const linkEl = p.createEl("a", {
+                    href: url,
+                    text: url,
+                });
+                linkEl.addClass("vault-mcp-connection-url");
+            } else {
+                p.setText(
+                    `Bound to all interfaces on port ${this.plugin.settings.serverPort} using ${this.plugin.protocol().toUpperCase()}; use your network hostname with this port.`,
+                );
+            }
         }
     }
 }

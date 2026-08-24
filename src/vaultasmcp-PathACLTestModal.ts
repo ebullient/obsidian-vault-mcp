@@ -34,6 +34,9 @@ export class PathACLTestModal extends Modal {
             serverHost: () => "localhost",
             serverVersion: () => "0.1",
             normalizeQuotes: () => false,
+            tlsEnabled: () => false,
+            tlsCertificatePem: () => undefined,
+            getTlsPrivateKeyPem: () => undefined,
         };
 
         this.aclChecker = new PathACLChecker(currentSettings, testLogger);

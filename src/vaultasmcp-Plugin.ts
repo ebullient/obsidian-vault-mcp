@@ -7,7 +7,14 @@ import type {
     ServerStatus,
     VaultAsMCPSettings,
 } from "./@types/settings";
-import { DEFAULT_SETTINGS } from "./vaultasmcp-Constants";
+import {
+    DEFAULT_SETTINGS,
+    TLS_PRIVATE_KEY_SECRET_ID,
+} from "./vaultasmcp-Constants";
+import {
+    validateServerExposure,
+    validateTlsConfiguration,
+} from "./vaultasmcp-Security";
 import { MCPServer } from "./vaultasmcp-Server";
 import { VaultAsMCPSettingsTab } from "./vaultasmcp-SettingsTab";
 
@@ -15,7 +22,7 @@ export class VaultAsMCPPlugin
     extends Plugin
     implements Logger, CurrentSettings
 {
-    settings!: VaultAsMCPSettings;
+    declare settings: VaultAsMCPSettings;
     private server: MCPServer | null = null;
     private statusBarItem: HTMLElement | null = null;
     private serverStatus: ServerStatus = "stopped";
@@ -93,6 +100,21 @@ export class VaultAsMCPPlugin
         await this.saveData(this.settings);
     }
 
+    storeTlsPrivateKeyPem(privateKeyPem: string): void {
+        this.app.secretStorage.setSecret(
+            TLS_PRIVATE_KEY_SECRET_ID,
+            privateKeyPem,
+        );
+    }
+
+    clearStoredTlsPrivateKeyPem(): void {
+        this.app.secretStorage.setSecret(TLS_PRIVATE_KEY_SECRET_ID, "");
+    }
+
+    hasStoredTlsPrivateKey(): boolean {
+        return this.getTlsPrivateKeyPem() !== undefined;
+    }
+
     private async toggleServer(): Promise<void> {
         if (this.server?.isRunning()) {
             await this.stopServer();
@@ -108,6 +130,22 @@ export class VaultAsMCPPlugin
         }
 
         try {
+            const exposureError = validateServerExposure(
+                this.settings.serverHost,
+                this.settings.bearerToken,
+            );
+            if (exposureError) {
+                throw new Error(exposureError);
+            }
+            const tlsError = validateTlsConfiguration(
+                this.settings.tlsEnabled,
+                this.settings.tlsCertificatePem,
+                this.getTlsPrivateKeyPem(),
+            );
+            if (tlsError) {
+                throw new Error(tlsError);
+            }
+
             this.server = new MCPServer(
                 this.app,
                 this, // as Logger
@@ -118,9 +156,7 @@ export class VaultAsMCPPlugin
             this.serverStatus = "running";
             this.updateStatusBar();
 
-            new Notice(
-                `MCP server started on port ${this.settings.serverPort}`,
-            );
+            new Notice(this.startupMessage());
         } catch (error) {
             this.serverStatus = "error";
             this.updateStatusBar();
@@ -159,6 +195,14 @@ export class VaultAsMCPPlugin
     async restartServer(): Promise<void> {
         await this.stopServer();
         await this.startServer();
+    }
+
+    startupMessage(): string {
+        if (this.settings.serverHost === "127.0.0.1") {
+            return `MCP server started at ${this.protocol()}://localhost:${this.settings.serverPort}/mcp`;
+        }
+
+        return `MCP server started on port ${this.settings.serverPort} using ${this.protocol().toUpperCase()}`;
     }
 
     private updateStatusBar(): void {
@@ -256,5 +300,28 @@ export class VaultAsMCPPlugin
 
     normalizeQuotes(): boolean {
         return this.settings.normalizeQuotes ?? true;
+    }
+
+    tlsEnabled(): boolean {
+        return this.settings.tlsEnabled ?? false;
+    }
+
+    tlsCertificatePem(): string | undefined {
+        return this.settings.tlsCertificatePem?.trim() || undefined;
+    }
+
+    getTlsPrivateKeyPem(): string | undefined {
+        if (!this.settings.tlsPrivateKeySecretId) {
+            return undefined;
+        }
+        return (
+            this.app.secretStorage
+                .getSecret(this.settings.tlsPrivateKeySecretId)
+                ?.trim() || undefined
+        );
+    }
+
+    protocol(): "http" | "https" {
+        return this.tlsEnabled() ? "https" : "http";
     }
 }
