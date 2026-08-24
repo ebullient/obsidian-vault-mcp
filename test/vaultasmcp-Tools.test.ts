@@ -54,7 +54,7 @@ function makeTools(files: Record<string, string> = {}): {
 }
 
 describe("read_note tool surface", () => {
-    it("declares pagination input and output fields in the tool schema", () => {
+    it("declares pagination and metadata-only output fields in the tool schema", () => {
         const { tools } = makeTools({});
         const readNote = tools
             .getToolDefinitions()
@@ -98,6 +98,9 @@ describe("read_note tool surface", () => {
         expect(outputProperties.truncated).toMatchObject({
             type: "boolean",
         });
+        expect(outputProperties.sizeBytes).toMatchObject({
+            type: "number",
+        });
     });
 
     it("passes lineLimit through executeTool for whole-document pagination", async () => {
@@ -118,6 +121,39 @@ describe("read_note tool surface", () => {
             totalLines: 4,
             truncated: false,
         });
+    });
+
+    it("returns sizeBytes for metadata-only reads through executeTool", async () => {
+        const { tools } = makeTools({
+            "notes/doc.md": "# Intro\nalpha\n# Details\nbeta",
+        });
+
+        const result = await tools.executeTool("read_note", {
+            path: "notes/doc.md",
+            metadataOnly: true,
+        });
+
+        expect(result.content).toBeUndefined();
+        expect(typeof result.sizeBytes).toBe("number");
+    });
+});
+
+describe("read_multiple_notes tool surface", () => {
+    it("returns sizeBytes for metadata-only reads", async () => {
+        const { tools } = makeTools({
+            "notes/a.md": "# A\nalpha",
+            "notes/b.md": "# B\nbeta",
+        });
+
+        const result = await tools.executeTool("read_multiple_notes", {
+            paths: ["notes/a.md", "notes/b.md"],
+            metadataOnly: true,
+        });
+
+        expect(result.notes["notes/a.md"].content).toBeUndefined();
+        expect(result.notes["notes/b.md"].content).toBeUndefined();
+        expect(typeof result.notes["notes/a.md"].sizeBytes).toBe("number");
+        expect(typeof result.notes["notes/b.md"].sizeBytes).toBe("number");
     });
 });
 

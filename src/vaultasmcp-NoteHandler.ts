@@ -80,6 +80,7 @@ export class NoteHandler {
         endLine?: number;
         totalLines?: number;
         truncated?: boolean;
+        sizeBytes?: number;
     }> {
         const file = this.getFileWithAclCheck(path);
         const cache = this.app.metadataCache.getFileCache(file);
@@ -104,6 +105,7 @@ export class NoteHandler {
                 links,
                 outline: this.getOutline(cache),
                 frontmatter,
+                sizeBytes: file.stat.size,
             };
         }
 

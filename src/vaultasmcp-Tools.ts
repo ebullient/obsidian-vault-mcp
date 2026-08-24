@@ -131,6 +131,12 @@ export class MCPTools {
                         "Whether additional whole-document lines exist " +
                         "beyond the returned pagination window.",
                 },
+                sizeBytes: {
+                    type: "number",
+                    description:
+                        "File size in bytes, on disk. Only returned " +
+                        "when metadataOnly is true.",
+                },
             },
             required: [],
         };
@@ -164,10 +170,8 @@ export class MCPTools {
                     "(direct embed targets), links (direct outgoing " +
                     "wikilinks), frontmatter, and, when not filtering to " +
                     "a section, outline (heading list). Pass metadataOnly: " +
-                    "true to skip content and return only embeds/links/" +
-                    "outline/frontmatter — useful for inspecting a " +
-                    "note's structure and connections before deciding " +
-                    "whether to read it in full.",
+                    "true to inspect a note's structure and size without " +
+                    "reading its content.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -210,10 +214,12 @@ export class MCPTools {
                         metadataOnly: {
                             type: "boolean",
                             description:
-                                "Return only embeds/links/outline/" +
-                                "frontmatter, skipping content entirely. " +
-                                "Useful for triaging candidate notes " +
-                                "before a full read. Default: false.",
+                                "Skip content and return only embeds/" +
+                                "links/outline/frontmatter/sizeBytes. " +
+                                "Use to check a note's size before " +
+                                "deciding whether to read it in full or " +
+                                "in chunks (lineOffset/lineLimit). " +
+                                "Default: false.",
                         },
                         excludePatterns: {
                             type: "array",
@@ -238,10 +244,8 @@ export class MCPTools {
                     "Read multiple notes in one request. " +
                     "Returns a map of path to content or error. " +
                     `Max ${MAX_READ_MULTIPLE_PATHS} paths per call. ` +
-                    "Pass metadataOnly: true to skip content and return " +
-                    "only embeds/links/outline/frontmatter for each note " +
-                    "— useful for triaging many candidate notes cheaply " +
-                    "before deciding which to read in full.",
+                    "Pass metadataOnly: true to inspect each note's " +
+                    "structure and size without reading its content.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -255,9 +259,11 @@ export class MCPTools {
                         metadataOnly: {
                             type: "boolean",
                             description:
-                                "Return only embeds/links/outline/" +
-                                "frontmatter for each note, skipping " +
-                                "content entirely. Default: false.",
+                                "Skip content and return only embeds/" +
+                                "links/outline/frontmatter/sizeBytes for " +
+                                "each note. Use to triage many candidate " +
+                                "notes cheaply before deciding which to " +
+                                "read in full. Default: false.",
                         },
                     },
                     required: ["paths"],
@@ -306,6 +312,13 @@ export class MCPTools {
                                         },
                                     },
                                     frontmatter: { type: "object" },
+                                    sizeBytes: {
+                                        type: "number",
+                                        description:
+                                            "File size in bytes, on disk. " +
+                                            "Only returned when " +
+                                            "metadataOnly is true.",
+                                    },
                                     error: { type: "string" },
                                 },
                             },
@@ -805,6 +818,7 @@ export class MCPTools {
         endLine?: number;
         totalLines?: number;
         truncated?: boolean;
+        sizeBytes?: number;
     }> {
         return await this.noteHandler.readNote(
             path,
@@ -832,6 +846,7 @@ export class MCPTools {
                     line: number;
                 }[];
                 frontmatter?: Record<string, unknown>;
+                sizeBytes?: number;
                 error?: string;
             }
         >;
@@ -856,6 +871,7 @@ export class MCPTools {
                     line: number;
                 }[];
                 frontmatter?: Record<string, unknown>;
+                sizeBytes?: number;
                 error?: string;
             }
         > = {};

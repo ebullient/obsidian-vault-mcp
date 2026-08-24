@@ -484,6 +484,7 @@ describe("NoteHandler.readNote", () => {
                 { text: "Intro", level: 1, line: 0 },
             ]);
             expect(result.frontmatter).toEqual({ status: "active" });
+            expect(typeof result.sizeBytes).toBe("number");
         });
 
         it("does not read file content when metadataOnly is true", async () => {
