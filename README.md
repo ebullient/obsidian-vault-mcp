@@ -2,7 +2,7 @@
 
 ![GitHub all releases](https://img.shields.io/github/downloads/ebullient/obsidian-vault-mcp/total?color=success)
 
-An Obsidian plugin that runs an MCP (Model Context Protocol) server, enabling external LLM tools to access your vault. Supports HTTP transport natively (Open WebUI, remote LLMs). An optional [`bridge` script](#claude-desktop) provides a bridge from HTTP to stdio (Claude Desktop).
+This Obsidian plugin runs an MCP (Model Context Protocol) server directly inside Obsidian, letting external LLM tools access your vault. Supports HTTP transport natively (Open WebUI, remote LLMs). An optional [`bridge` script](#claude-desktop) provides a bridge from HTTP to stdio (Claude Desktop).
 
 > **Important Notes**
 >
@@ -16,9 +16,15 @@ An Obsidian plugin that runs an MCP (Model Context Protocol) server, enabling ex
 - **Status Bar Indicator**: Shows server status (stopped/running/error) with click-to-toggle functionality
 - **Configurable Settings**: Adjust server port, auto-start behavior, logging, and path ACLs to control access to areas of your vault
 - **CORS Support**: Enables access from remote machines via Tailscale or local network
-- **MCP Tools**: Note read/write, search, templates, and periodic notes — see [MCP Tools Reference](#mcp-tools-reference)
+- **MCP Tools**: Read, search, list, create, edit, rename, and delete notes; templates and periodic notes — see [MCP Tools Reference](#mcp-tools-reference)
 
 ## Installation
+
+### Community Plugins
+
+1. Open Settings → Community Plugins
+2. Click "Browse" and search for "Vault as MCP"
+3. Install and enable the plugin
 
 ### Manual Installation
 
