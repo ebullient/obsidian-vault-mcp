@@ -3,7 +3,7 @@
 	"name": "Vault as MCP",
 	"version": "1.0.0",
 	"minAppVersion": "1.13.0",
-	"description": "MCP server connecting Open WebUI, Claude Desktop, and other LLMs to your vault.",
+	"description": "Runs an MCP server inside Obsidian, exposing your vault to external LLM tools with read, search, and edit operations.",
 	"author": "ebullient",
 	"authorUrl": "https://github.com/ebullient",
   "fundingUrl": "https://buymeacoffee.com/ebullient",
