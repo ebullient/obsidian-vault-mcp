@@ -185,26 +185,17 @@ Tool names, parameters, and behavior are defined in
 MCP `tools/list` endpoint — that's the source of truth for exact parameter
 names, types, and descriptions. The summary below is for orientation only.
 
-- `read_note` — Read a note's content by path; optionally filtered to one
-  heading, windowed by file-relative lines, or metadata-only
-  (links/embeds/outline/frontmatter, no content)
-- `read_multiple_notes` — Read several notes in one request (max 25)
-- `search_notes` — Find notes by folder, tag(s), frontmatter, modification
-  time, or text content
-- `list_notes` — List notes and subfolders in a directory (non-recursive)
+- `read_note` / `read_multiple_notes` — Read note content by path;
+  `metadataOnly` returns structure and size without content
+- `search_notes` — Find notes by folder, heading, tag, frontmatter,
+  modification time, or text content; returns paths only
+- `list_notes` — List notes and subfolders in a directory
 - `create_note` — Create a note or binary file, optionally from a template
-- `append_to_note` — Append content to a note, at the end or after a heading
-- `update_note` — Replace a note's entire content
-- `patch_note` — Replace an exact string in a note using `old_text` and
-  `new_text`; prefer over `update_note` for surgical edits. Matching is
-  exact, so use enough surrounding context to make `old_text` unique, and
-  pass literal quote characters directly rather than over-escaping them.
-  When exact text appears multiple times, optional `lineOffset` can pick the
-  nearest 0-based file line.
-- `delete_note` — Move a note to the system trash
-- `rename_note` — Rename or move a note, rewriting links that point to it
-- `read_periodic_note` — Get the path (and content, if it exists) for a
-  periodic note
+- `append_to_note` / `update_note` / `patch_note` — Add or edit note
+  content; `patch_note` replaces an exact string for surgical edits
+- `delete_note` / `rename_note` — Delete or move/rename a note
+  (`rename_note` rewrites links that point to it)
+- `read_periodic_note` — Get or create a daily/weekly/monthly/etc. note
 - `list_templates` — List available Templater templates
 
 ## Development

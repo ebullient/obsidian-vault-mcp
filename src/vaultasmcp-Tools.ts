@@ -26,6 +26,7 @@ import {
 } from "obsidian-daily-notes-interface";
 import type { NoteReadResult } from "./@types/notes";
 import type { CurrentSettings, Logger, MCPTool } from "./@types/settings";
+import { normalizeHeading } from "./vaultasmcp-Headings";
 import { momentFn } from "./vaultasmcp-moment";
 import { NoteHandler } from "./vaultasmcp-NoteHandler";
 import { PathACLChecker } from "./vaultasmcp-PathACL";
@@ -33,6 +34,19 @@ import { TemplateHandler } from "./vaultasmcp-TemplateHandler";
 
 // Cap read_multiple_notes to avoid flooding callers with content
 const MAX_READ_MULTIPLE_PATHS = 25;
+
+// search_notes filters that must be arrays of strings when supplied.
+// A malformed shape would otherwise skip the filter silently and
+// return a broader result set than the caller asked for.
+const SEARCH_STRING_ARRAY_PARAMS = [
+    "headings",
+    "anyHeadings",
+    "withoutHeadings",
+    "tags",
+    "anyTags",
+    "withoutTags",
+    "withoutFrontmatter",
+] as const;
 
 export class MCPTools {
     private noteHandler: NoteHandler;
@@ -334,12 +348,15 @@ export class MCPTools {
             {
                 name: "search_notes",
                 description:
-                    "Find notes across the vault by folder, tag, frontmatter, " +
-                    "modification time, or text content. " +
-                    "All parameters are optional and combine with AND logic, " +
-                    "except tags[] which is OR within the tag dimension. " +
-                    "Returns note paths only — not folder structure; " +
-                    "use list_notes to browse directories.",
+                    "Find notes across the vault by folder, heading, tag, " +
+                    "frontmatter, modification time, or text content. " +
+                    "All parameters are optional and combine with AND " +
+                    "logic. Heading filters match Obsidian's parsed " +
+                    "outline, not body text; they are level-insensitive " +
+                    "and match the complete heading name. " +
+                    "Returns note paths only; follow up with " +
+                    "read_multiple_notes (metadataOnly: true) to inspect " +
+                    "matches, or list_notes to browse directories.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -349,20 +366,36 @@ export class MCPTools {
                                 "Restrict to notes under this folder path " +
                                 "(recursive).",
                         },
-                        tag: {
-                            type: "string",
-                            description:
-                                "Single tag filter, combined with AND logic " +
-                                "alongside other params (e.g., 'project/work'). " +
-                                "Use tags[] for OR matching across multiple tags.",
+                        headings: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Require ALL of these headings.",
+                        },
+                        anyHeadings: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Require ANY of these headings.",
+                        },
+                        withoutHeadings: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Require NONE of these headings.",
                         },
                         tags: {
                             type: "array",
                             items: { type: "string" },
                             description:
-                                "Return notes that have ANY of these tags (OR logic). " +
-                                "Tags without #. " +
-                                "Cannot be combined with tag.",
+                                "Require ALL of these tags. Tags without #.",
+                        },
+                        anyTags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Require ANY of these tags.",
+                        },
+                        withoutTags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Require NONE of these tags.",
                         },
                         text: {
                             type: "string",
@@ -398,20 +431,30 @@ export class MCPTools {
                                 'E.g., {"status": "active"}',
                             additionalProperties: { type: "string" },
                         },
+                        withoutFrontmatter: {
+                            type: "array",
+                            items: { type: "string" },
+                            description:
+                                "Require NONE of these top-level frontmatter " +
+                                "keys to be present. A key with a null, " +
+                                "empty, false, or zero value still counts " +
+                                "as present. A note with no frontmatter " +
+                                "block at all matches.",
+                        },
                         sort: {
                             type: "string",
                             enum: ["alpha", "recent"],
                             description:
                                 "Sort order: 'alpha' (default, alphabetical) or " +
                                 "'recent' (newest modified first). " +
-                                "Use 'recent' with limit to get recently changed notes.",
+                                "Required for limit to take effect.",
                         },
                         limit: {
                             type: "number",
                             description:
-                                "Max notes to return. " +
-                                "Only applied when sort is 'recent' " +
-                                "(default: 20, max: 50).",
+                                "Max notes to return; requires sort: " +
+                                "'recent' (default: 20, max: 50). Other " +
+                                "searches return every match uncapped.",
                         },
                     },
                 },
@@ -741,15 +784,36 @@ export class MCPTools {
                     args.metadataOnly as boolean | undefined,
                 );
             case "search_notes":
+                if (args.tag !== undefined) {
+                    throw new Error(
+                        "The `tag` parameter has been removed. Use " +
+                            "`tags` (require all) or `anyTags` " +
+                            "(require any) instead.",
+                    );
+                }
+                for (const name of SEARCH_STRING_ARRAY_PARAMS) {
+                    this.assertStringArray(args[name], name);
+                }
+                if (args.limit !== undefined && args.sort !== "recent") {
+                    throw new Error(
+                        '`limit` requires `sort: "recent"`. Other ' +
+                            "searches return every match uncapped.",
+                    );
+                }
                 return await this.searchNotes(
-                    args.tag as string | undefined,
                     args.folder as string | undefined,
+                    args.headings as string[] | undefined,
+                    args.anyHeadings as string[] | undefined,
+                    args.withoutHeadings as string[] | undefined,
+                    args.tags as string[] | undefined,
+                    args.anyTags as string[] | undefined,
+                    args.withoutTags as string[] | undefined,
                     args.text as string | undefined,
                     args.mtime as
                         | { before?: string; after?: string }
                         | undefined,
                     args.frontmatter as Record<string, string> | undefined,
-                    args.tags as string[] | undefined,
+                    args.withoutFrontmatter as string[] | undefined,
                     args.sort as "alpha" | "recent" | undefined,
                     args.limit as number | undefined,
                 );
@@ -1021,12 +1085,17 @@ export class MCPTools {
     }
 
     private async searchNotes(
-        tag?: string,
         folder?: string,
+        headings?: string[],
+        anyHeadings?: string[],
+        withoutHeadings?: string[],
+        tags?: string[],
+        anyTags?: string[],
+        withoutTags?: string[],
         text?: string,
         mtime?: { before?: string; after?: string },
         frontmatter?: Record<string, string>,
-        tags?: string[],
+        withoutFrontmatter?: string[],
         sort?: "alpha" | "recent",
         limit?: number,
     ): Promise<{ notes: string[] }> {
@@ -1038,52 +1107,32 @@ export class MCPTools {
             const testFolder = normalizePath(folder);
             files = files.filter((f) => f.path.startsWith(testFolder));
         }
-        if (tag) {
-            const normalizedTag = this.normalizeTag(tag);
+        if (headings && headings.length > 0) {
+            const normalizedHeadings = headings.map(normalizeHeading);
             files = files.filter((f) => {
-                const cache = this.app.metadataCache.getFileCache(f);
-                if (!cache) {
-                    return false;
-                }
-                const allTags = getAllTags(cache) || [];
-                return allTags.some(
-                    (t) => this.normalizeTag(t) === normalizedTag,
+                const noteHeadings = this.getNoteHeadings(f);
+                if (!noteHeadings) return false;
+                return normalizedHeadings.every((h) =>
+                    noteHeadings.includes(h),
                 );
             });
         }
-        if (frontmatter && Object.keys(frontmatter).length > 0) {
+        if (anyHeadings && anyHeadings.length > 0) {
+            const normalizedHeadings = anyHeadings.map(normalizeHeading);
             files = files.filter((f) => {
-                const cache = this.app.metadataCache.getFileCache(f);
-                const fm = cache?.frontmatter;
-                if (!fm) {
-                    return false;
-                }
-                return Object.entries(frontmatter).every(([key, value]) => {
-                    const fmValue: unknown = fm[key];
-                    if (
-                        fmValue === undefined ||
-                        fmValue === null ||
-                        typeof fmValue === "object"
-                    ) {
-                        return false;
-                    }
-                    const fmStr = fmValue as string | number | boolean;
-                    return String(fmStr).toLowerCase() === value.toLowerCase();
-                });
+                const noteHeadings = this.getNoteHeadings(f);
+                if (!noteHeadings) return false;
+                return normalizedHeadings.some((h) => noteHeadings.includes(h));
             });
         }
-        if (mtime) {
-            const before = mtime.before
-                ? this.parseDateParam(mtime.before).endOf("day")
-                : undefined;
-            const after = mtime.after
-                ? this.parseDateParam(mtime.after).startOf("day")
-                : undefined;
+        if (withoutHeadings && withoutHeadings.length > 0) {
+            const normalizedHeadings = withoutHeadings.map(normalizeHeading);
             files = files.filter((f) => {
-                const date = this.getEffectiveMtime(f);
-                if (before && date.isAfter(before, "day")) return false;
-                if (after && date.isBefore(after, "day")) return false;
-                return true;
+                const noteHeadings = this.getNoteHeadings(f);
+                if (!noteHeadings) return false;
+                return !normalizedHeadings.some((h) =>
+                    noteHeadings.includes(h),
+                );
             });
         }
         if (tags && tags.length > 0) {
@@ -1094,7 +1143,29 @@ export class MCPTools {
                 const allTags = (getAllTags(cache) || []).map((t) =>
                     this.normalizeTag(t),
                 );
+                return normalizedTags.every((tag) => allTags.includes(tag));
+            });
+        }
+        if (anyTags && anyTags.length > 0) {
+            const normalizedTags = anyTags.map((t) => this.normalizeTag(t));
+            files = files.filter((f) => {
+                const cache = this.app.metadataCache.getFileCache(f);
+                if (!cache) return false;
+                const allTags = (getAllTags(cache) || []).map((t) =>
+                    this.normalizeTag(t),
+                );
                 return normalizedTags.some((tag) => allTags.includes(tag));
+            });
+        }
+        if (withoutTags && withoutTags.length > 0) {
+            const normalizedTags = withoutTags.map((t) => this.normalizeTag(t));
+            files = files.filter((f) => {
+                const cache = this.app.metadataCache.getFileCache(f);
+                if (!cache) return false;
+                const allTags = (getAllTags(cache) || []).map((t) =>
+                    this.normalizeTag(t),
+                );
+                return !normalizedTags.some((tag) => allTags.includes(tag));
             });
         }
         if (text) {
@@ -1118,6 +1189,55 @@ export class MCPTools {
             }
             sortSearchResults(scored);
             files = scored.map((r) => r.file);
+        }
+        if (mtime) {
+            const before = mtime.before
+                ? this.parseDateParam(mtime.before).endOf("day")
+                : undefined;
+            const after = mtime.after
+                ? this.parseDateParam(mtime.after).startOf("day")
+                : undefined;
+            files = files.filter((f) => {
+                const date = this.getEffectiveMtime(f);
+                if (before && date.isAfter(before, "day")) return false;
+                if (after && date.isBefore(after, "day")) return false;
+                return true;
+            });
+        }
+        if (frontmatter && Object.keys(frontmatter).length > 0) {
+            files = files.filter((f) => {
+                const cache = this.app.metadataCache.getFileCache(f);
+                const fm = cache?.frontmatter;
+                if (!fm) {
+                    return false;
+                }
+                return Object.entries(frontmatter).every(([key, value]) => {
+                    const fmValue: unknown = fm[key];
+                    if (
+                        fmValue === undefined ||
+                        fmValue === null ||
+                        typeof fmValue === "object"
+                    ) {
+                        return false;
+                    }
+                    const fmStr = fmValue as string | number | boolean;
+                    return String(fmStr).toLowerCase() === value.toLowerCase();
+                });
+            });
+        }
+        if (withoutFrontmatter && withoutFrontmatter.length > 0) {
+            files = files.filter((f) => {
+                const cache = this.app.metadataCache.getFileCache(f);
+                // Metadata that could not be read is not the same as a
+                // note with no frontmatter block: unreadable metadata
+                // does not match, but a note with no frontmatter block
+                // does, since every key is absent from it.
+                if (cache === null) return false;
+                const fm = cache?.frontmatter;
+                return withoutFrontmatter.every(
+                    (key) => fm === undefined || !Object.hasOwn(fm, key),
+                );
+            });
         }
 
         if (sort === "recent") {
@@ -1182,8 +1302,37 @@ export class MCPTools {
         };
     }
 
+    /**
+     * Reject a filter that is supplied but is not an array of strings.
+     * Silently ignoring a malformed filter would drop a predicate the
+     * caller asked for and return a broader result set than intended.
+     */
+    private assertStringArray(value: unknown, name: string): void {
+        if (value === undefined) {
+            return;
+        }
+        const ok =
+            Array.isArray(value) && value.every((v) => typeof v === "string");
+        if (!ok) {
+            throw new Error(`\`${name}\` must be an array of strings.`);
+        }
+    }
+
     private normalizeTag(tag: string): string {
         return tag.startsWith("#") ? tag.substring(1) : tag;
+    }
+
+    /**
+     * Canonically normalized heading names for a note, or undefined
+     * when the note's headings are unavailable — never inferred as an
+     * empty outline, since presence and absence predicates must not
+     * match unavailable metadata.
+     */
+    private getNoteHeadings(file: TFile): string[] | undefined {
+        const cache = this.app.metadataCache.getFileCache(file);
+        const cachedHeadings = cache?.headings;
+        if (!cachedHeadings) return undefined;
+        return cachedHeadings.map((h) => normalizeHeading(h.heading));
     }
 
     /**

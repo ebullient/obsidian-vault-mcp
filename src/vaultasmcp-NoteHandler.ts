@@ -7,6 +7,7 @@ import {
 } from "obsidian";
 import type { LinkRef, NoteReadResult, OutlineEntry } from "./@types/notes";
 import type { CurrentSettings, Logger } from "./@types/settings";
+import { normalizeHeading } from "./vaultasmcp-Headings";
 import type { PathACLChecker } from "./vaultasmcp-PathACL";
 import type { TemplateHandler } from "./vaultasmcp-TemplateHandler";
 
@@ -169,10 +170,9 @@ export class NoteHandler {
                 throw new Error(`No heading found at line ${lineOffset}`);
             }
             if (name !== undefined) {
-                const normalizedName = this.normalizeHeading(name);
+                const normalizedName = normalizeHeading(name);
                 if (
-                    this.normalizeHeading(headings[index].heading) !==
-                    normalizedName
+                    normalizeHeading(headings[index].heading) !== normalizedName
                 ) {
                     throw new Error(
                         `Heading at line ${lineOffset} is ` +
@@ -185,10 +185,10 @@ export class NoteHandler {
             return index;
         }
 
-        const normalizedName = this.normalizeHeading(name ?? "");
+        const normalizedName = normalizeHeading(name ?? "");
         const matches: number[] = [];
         headings.forEach((h, i) => {
-            if (this.normalizeHeading(h.heading) === normalizedName) {
+            if (normalizeHeading(h.heading) === normalizedName) {
                 matches.push(i);
             }
         });
@@ -853,20 +853,6 @@ export class NoteHandler {
         }
         return char;
     }
-
-    private normalizeHeading = (value: string): string => {
-        let decoded = value;
-        try {
-            decoded = decodeURIComponent(value);
-        } catch {
-            decoded = value.replace(/%20/g, " ");
-        }
-        return decoded
-            .trim()
-            .toLowerCase()
-            .replace(/[^\w\s-]/g, "") // drop punctuation
-            .replace(/[\s_]+/g, "-"); // collapse spaces/underscores
-    };
 
     private base64ToArrayBuffer(base64: string): ArrayBuffer {
         try {
