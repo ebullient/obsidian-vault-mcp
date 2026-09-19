@@ -100,6 +100,16 @@ function seedSearchCache(
     }
 }
 
+// Removes a note's cache entry so getFileCache returns null, modelling a
+// note Obsidian has not indexed. Files created through the vault mock are
+// parsed into the cache automatically, so "unreadable" must be explicit.
+function clearSearchCache(app: App, ...paths: string[]): void {
+    const mc = app.metadataCache as unknown as MetadataCache;
+    for (const path of paths) {
+        mc.cache__.delete(path);
+    }
+}
+
 describe("search_notes cache seeding", () => {
     it("makes a seeded note's cache visible through the app mock", () => {
         const { app } = makeTools({ "notes/a.md": "# Intro\nhello" });
@@ -593,8 +603,8 @@ describe("search_notes heading predicates", () => {
     });
 
     it("a note with unreadable metadata matches neither presence nor absence", async () => {
-        const { tools } = makeTools({ "notes/unreadable.md": "a" });
-        // Deliberately not seeded: getFileCache returns null.
+        const { tools, app } = makeTools({ "notes/unreadable.md": "a" });
+        clearSearchCache(app, "notes/unreadable.md");
 
         const presence = await tools.executeTool("search_notes", {
             headings: ["Key Claims"],
@@ -715,8 +725,8 @@ describe("search_notes withoutFrontmatter", () => {
     });
 
     it("does not match when metadata is unreadable (no cache entry at all)", async () => {
-        const { tools } = makeTools({ "notes/unreadable.md": "a" });
-        // Deliberately not seeded: getFileCache returns null.
+        const { tools, app } = makeTools({ "notes/unreadable.md": "a" });
+        clearSearchCache(app, "notes/unreadable.md");
 
         const result = await tools.executeTool("search_notes", {
             withoutFrontmatter: ["claims_verified"],
@@ -1111,8 +1121,8 @@ describe("search_notes filters (characterization, pre-enhanced-search)", () => {
         });
 
         it("withoutTags does not false-positive on unreadable metadata", async () => {
-            const { tools } = makeTools({ "notes/unreadable.md": "a" });
-            // Deliberately not seeded: getFileCache returns null.
+            const { tools, app } = makeTools({ "notes/unreadable.md": "a" });
+            clearSearchCache(app, "notes/unreadable.md");
 
             const result = await tools.executeTool("search_notes", {
                 withoutTags: ["draft"],
