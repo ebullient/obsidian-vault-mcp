@@ -51,11 +51,13 @@ jobs:
         git config user.name "$GH_BOT_NAME"
         git config user.email "$GH_BOT_EMAIL"
 
-    # Build the plugin
-    - name: Build and Tag
+    # 1) Build main: sets the version and populates build/.
+    # Nothing is committed, tagged, or pushed until every build and
+    # verification step below has succeeded, so a build failure leaves
+    # the remote untouched and the run can simply be retried.
+    - name: Build main
       id: build
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         INPUT_VERSION: ${{ github.event.inputs.version }}
         INPUT_UPDATE_MANIFEST: ${{ github.event.inputs.update_manifest }}
         INPUT_UPDATE_BRAT: ${{ github.event.inputs.update_brat }}
@@ -65,12 +67,19 @@ jobs:
         echo "update_brat: $INPUT_UPDATE_BRAT"
 
         npm ci
+        # Runs the preversion hook, which builds the plugin into build/
         npm version "$INPUT_VERSION" --no-git-tag-version
         VERSION=$(grep '^  "version"' package.json | cut -d'"' -f4)
         echo "$VERSION"
 
+        # Check both tags up front: a leftover tag from a failed run
+        # should stop the build here, not part way through tagging.
         if git rev-parse "refs/tags/$VERSION" > /dev/null 2>&1; then
           echo "🛑 Tag $VERSION already exists. Delete the release and tag manually, then re-run."
+          exit 1
+        fi
+        if git rev-parse "refs/tags/bridge/$VERSION" > /dev/null 2>&1; then
+          echo "🛑 Tag bridge/$VERSION already exists. Delete it manually, then re-run."
           exit 1
         fi
 
@@ -83,67 +92,91 @@ jobs:
           sed -i 's|\(version":\) "[0-9\.]*"|\1 "'$VERSION'"|' manifest-beta.json
         fi
 
-        git add .
-        git status
-        git commit -m "🔖 $VERSION"
-        git push
-
-        git tag "$VERSION"
-        git push --tags
-
         npm run brat-notes -- "${VERSION}"
         echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-    # Build the bridge (submodule), tag it, and copy artifact into build/
+    # 2) Build bridge: on main it is a submodule and must be built here.
+    # On 0.8.x, bridge-src/ is built by the plugin build above, so there
+    # is nothing to do; step 3 verifies the artifact either way.
     - name: Build bridge
       if: github.ref == 'refs/heads/main'
-      env:
-        RELEASE_VERSION: ${{ steps.build.outputs.version }}
       run: |
         cd bridge
         npm ci
         npm run build
         cp mcp-bridge.js ../build/mcp-bridge.js
+
+    # 3) Verify the release artifacts are present before anything is
+    # tagged or pushed. The contract is the same on both branches.
+    - name: Verify build artifacts
+      run: |
+        test -f build/main.js
+        test -f build/styles.css
+        test -x build/mcp-bridge.js
+        ls -l build/
+
+    # 4) Tag main: commit the version bump and push it with its tag.
+    - name: Tag main
+      env:
+        RELEASE_VERSION: ${{ steps.build.outputs.version }}
+      run: |
+        git add .
+        git status
+        git commit -m "🔖 $RELEASE_VERSION"
+        git tag "$RELEASE_VERSION"
+        # Push the commit and its tag together, naming both refs so no
+        # other local tags come along for the ride.
+        git push origin HEAD "refs/tags/$RELEASE_VERSION"
+
+    # 5) Tag bridge: the submodule shares this repository, so the tag
+    # goes to the same remote on the commit recorded in the gitlink.
+    - name: Tag bridge
+      if: github.ref == 'refs/heads/main'
+      env:
+        RELEASE_VERSION: ${{ steps.build.outputs.version }}
+      run: |
+        cd bridge
         git tag "bridge/$RELEASE_VERSION"
         git push origin "bridge/$RELEASE_VERSION"
 
-    # bridge-src/ is built by npm run build (via preversion); verify artifact is in build/
-    - name: Build bridge (bridge-src)
-      if: github.ref == 'refs/heads/0.8.x'
-      run: |
-        test -x build/mcp-bridge.js
-
-    # Package the required files into a zip
+    # 6) Package the required files into a zip. The zip name is emitted
+    # as an output so the attest and release steps below name the same
+    # file without rebuilding the string.
     - name: Package
+      id: package
       env:
         REPO_NAME: ${{ github.event.repository.name }}
         RELEASE_VERSION: ${{ steps.build.outputs.version }}
       run: |
+        ZIP="${REPO_NAME}-${RELEASE_VERSION}.zip"
+
         mv build "$REPO_NAME"
-        zip -r "${REPO_NAME}-${RELEASE_VERSION}.zip" "$REPO_NAME"
-        unzip -j "${REPO_NAME}-${RELEASE_VERSION}.zip" \
+        zip -r "$ZIP" "$REPO_NAME"
+        unzip -j "$ZIP" \
             "$REPO_NAME/main.js" \
             "$REPO_NAME/mcp-bridge.js" \
             "$REPO_NAME/styles.css"
 
-    # Attest build provenance for release artifacts
+        echo "zip=${ZIP}" >> "$GITHUB_OUTPUT"
+
+    # 7) Attest build provenance for release artifacts
     - name: Attest build artifacts
       uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6  # v4
       with:
         subject-path: |
-          ${{ github.event.repository.name }}-${{ steps.build.outputs.version }}.zip
+          ${{ steps.package.outputs.zip }}
           ./main.js
           ./mcp-bridge.js
           ./styles.css
 
-    # Create the release on github
+    # 8) Create the release on github
     - name: Create Release
       id: create_release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         INPUT_UPDATE_MANIFEST: ${{ github.event.inputs.update_manifest }}
-        REPO_NAME: ${{ github.event.repository.name }}
         RELEASE_VERSION: ${{ steps.build.outputs.version }}
+        RELEASE_ZIP: ${{ steps.package.outputs.zip }}
       run: |
         prerelease=true
         if [ "$INPUT_UPDATE_MANIFEST" = "true" ]; then
@@ -155,7 +188,7 @@ jobs:
             --title "$RELEASE_VERSION" \
             --verify-tag \
             --prerelease=${prerelease} \
-            "${REPO_NAME}-${RELEASE_VERSION}.zip" \
+            "$RELEASE_ZIP" \
             './main.js' \
             './mcp-bridge.js' \
             './styles.css' \
