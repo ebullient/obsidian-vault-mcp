@@ -3,7 +3,7 @@
 	"name": "Vault as MCP",
 	"version": "1.1.0",
 	"minAppVersion": "1.13.0",
-	"description": "Runs an MCP server inside Obsidian, exposing your vault to external LLM tools with read, search, and edit operations.",
+	"description": "A built-in MCP server, exposing your vault to external LLM tools with read, search, and edit operations.",
 	"author": "ebullient",
 	"authorUrl": "https://github.com/ebullient",
   "fundingUrl": "https://buymeacoffee.com/ebullient",
