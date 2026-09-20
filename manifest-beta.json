@@ -1,7 +1,7 @@
 {
 	"id": "vault-as-mcp",
 	"name": "Vault as MCP",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"minAppVersion": "1.13.0",
 	"description": "A built-in MCP server, exposing your vault to external LLM tools with read, search, and edit operations.",
 	"author": "ebullient",
