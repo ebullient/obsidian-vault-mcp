@@ -752,7 +752,7 @@ describe("search_notes withoutFrontmatter", () => {
         });
 
         const result = await tools.executeTool("search_notes", {
-            frontmatter: { status: "active" },
+            frontmatterValues: { status: "active" },
             withoutFrontmatter: ["claims_verified"],
         });
 
@@ -766,7 +766,7 @@ describe("search_notes withoutFrontmatter", () => {
         });
 
         const result = await tools.executeTool("search_notes", {
-            frontmatter: { status: "active" },
+            frontmatterValues: { status: "active" },
             withoutFrontmatter: ["status"],
         });
 
@@ -890,7 +890,7 @@ describe("search_notes filters (characterization, pre-enhanced-search)", () => {
         });
     });
 
-    describe("frontmatter", () => {
+    describe("frontmatterValues", () => {
         it("matches values case-insensitively", async () => {
             const { tools, app } = makeTools({
                 "notes/a.md": "a",
@@ -902,7 +902,7 @@ describe("search_notes filters (characterization, pre-enhanced-search)", () => {
             });
 
             const result = await tools.executeTool("search_notes", {
-                frontmatter: { status: "active" },
+                frontmatterValues: { status: "active" },
             });
 
             expect(result.notes).toEqual(["notes/a.md"]);
@@ -923,7 +923,7 @@ describe("search_notes filters (characterization, pre-enhanced-search)", () => {
             });
 
             const result = await tools.executeTool("search_notes", {
-                frontmatter: { status: "active" },
+                frontmatterValues: { status: "active" },
             });
 
             expect(result.notes).toEqual([]);
@@ -933,10 +933,141 @@ describe("search_notes filters (characterization, pre-enhanced-search)", () => {
             const { tools } = makeTools({ "notes/a.md": "a" });
 
             const result = await tools.executeTool("search_notes", {
-                frontmatter: { status: "active" },
+                frontmatterValues: { status: "active" },
             });
 
             expect(result.notes).toEqual([]);
+        });
+
+        it("rejects the removed key/value object shape", async () => {
+            const { tools } = makeTools({ "notes/a.md": "a" });
+
+            await expect(
+                tools.executeTool("search_notes", {
+                    frontmatter: { status: "active" },
+                }),
+            ).rejects.toThrow(/array of keys/);
+        });
+    });
+
+    describe("frontmatter presence", () => {
+        it("requires ALL listed keys", async () => {
+            const { tools, app } = makeTools({
+                "notes/both.md": "a",
+                "notes/one.md": "b",
+                "notes/neither.md": "c",
+            });
+            seedSearchCache(app, {
+                "notes/both.md": {
+                    frontmatter: { status: "active", due: "2026-01-01" },
+                },
+                "notes/one.md": { frontmatter: { status: "active" } },
+                "notes/neither.md": { frontmatter: { other: "x" } },
+            });
+
+            const result = await tools.executeTool("search_notes", {
+                frontmatter: ["status", "due"],
+            });
+
+            expect(result.notes).toEqual(["notes/both.md"]);
+        });
+
+        it("counts null, empty, false, zero, list, and map values as present", async () => {
+            const { tools, app } = makeTools({
+                "notes/null.md": "a",
+                "notes/empty.md": "b",
+                "notes/false.md": "c",
+                "notes/zero.md": "d",
+                "notes/list.md": "e",
+                "notes/map.md": "f",
+            });
+            seedSearchCache(app, {
+                "notes/null.md": { frontmatter: { status: null } },
+                "notes/empty.md": { frontmatter: { status: "" } },
+                "notes/false.md": { frontmatter: { status: false } },
+                "notes/zero.md": { frontmatter: { status: 0 } },
+                "notes/list.md": { frontmatter: { status: ["a", "b"] } },
+                "notes/map.md": { frontmatter: { status: { nested: true } } },
+            });
+
+            const result = await tools.executeTool("search_notes", {
+                frontmatter: ["status"],
+            });
+
+            expect(result.notes).toEqual([
+                "notes/empty.md",
+                "notes/false.md",
+                "notes/list.md",
+                "notes/map.md",
+                "notes/null.md",
+                "notes/zero.md",
+            ]);
+        });
+
+        it("does not treat inherited keys as present", async () => {
+            const { tools, app } = makeTools({ "notes/a.md": "a" });
+            seedSearchCache(app, {
+                "notes/a.md": { frontmatter: { status: "active" } },
+            });
+
+            const result = await tools.executeTool("search_notes", {
+                frontmatter: ["toString"],
+            });
+
+            expect(result.notes).toEqual([]);
+        });
+
+        it("rejects notes with no frontmatter cache at all", async () => {
+            const { tools } = makeTools({ "notes/a.md": "a" });
+
+            const result = await tools.executeTool("search_notes", {
+                frontmatter: ["status"],
+            });
+
+            expect(result.notes).toEqual([]);
+        });
+
+        it("anyFrontmatter requires at least one listed key", async () => {
+            const { tools, app } = makeTools({
+                "notes/status.md": "a",
+                "notes/due.md": "b",
+                "notes/neither.md": "c",
+            });
+            seedSearchCache(app, {
+                "notes/status.md": { frontmatter: { status: "active" } },
+                "notes/due.md": { frontmatter: { due: "2026-01-01" } },
+                "notes/neither.md": { frontmatter: { other: "x" } },
+            });
+
+            const result = await tools.executeTool("search_notes", {
+                anyFrontmatter: ["status", "due"],
+            });
+
+            expect(result.notes).toEqual(["notes/due.md", "notes/status.md"]);
+        });
+
+        it("combines presence with frontmatterValues", async () => {
+            const { tools, app } = makeTools({
+                "notes/match.md": "a",
+                "notes/wrong-status.md": "b",
+                "notes/no-due.md": "c",
+            });
+            seedSearchCache(app, {
+                "notes/match.md": {
+                    frontmatter: { status: "active", due: "2026-01-01" },
+                },
+                "notes/wrong-status.md": {
+                    frontmatter: { status: "archived", due: "2026-01-01" },
+                },
+                "notes/no-due.md": { frontmatter: { status: "active" } },
+            });
+
+            const result = await tools.executeTool("search_notes", {
+                frontmatter: ["due"],
+                frontmatterValues: { status: "active" },
+            });
+
+            expect(result.notes).toEqual(["notes/match.md"]);
         });
     });
 
@@ -1113,7 +1244,7 @@ describe("search_notes filters (characterization, pre-enhanced-search)", () => {
             });
 
             const result = await tools.executeTool("search_notes", {
-                frontmatter: { status: "active" },
+                frontmatterValues: { status: "active" },
                 tags: ["project"],
             });
 

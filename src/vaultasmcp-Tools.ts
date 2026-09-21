@@ -45,6 +45,8 @@ const SEARCH_STRING_ARRAY_PARAMS = [
     "tags",
     "anyTags",
     "withoutTags",
+    "frontmatter",
+    "anyFrontmatter",
     "withoutFrontmatter",
 ] as const;
 
@@ -425,21 +427,42 @@ export class MCPTools {
                             },
                         },
                         frontmatter: {
-                            type: "object",
+                            type: "array",
+                            items: { type: "string" },
                             description:
-                                "Filter by frontmatter key/value (case-insensitive). " +
-                                'E.g., {"status": "active"}',
-                            additionalProperties: { type: "string" },
+                                "Require ALL of these top-level frontmatter " +
+                                "keys to be present, whatever their values. " +
+                                "A key with a null, empty, false, or zero " +
+                                "value still counts as present.",
+                        },
+                        anyFrontmatter: {
+                            type: "array",
+                            items: { type: "string" },
+                            description:
+                                "Require ANY of these frontmatter keys to " +
+                                "be present.",
                         },
                         withoutFrontmatter: {
                             type: "array",
                             items: { type: "string" },
                             description:
-                                "Require NONE of these top-level frontmatter " +
-                                "keys to be present. A key with a null, " +
-                                "empty, false, or zero value still counts " +
-                                "as present. A note with no frontmatter " +
+                                "Require NONE of these frontmatter keys to " +
+                                "be present. A note with no frontmatter " +
                                 "block at all matches.",
+                        },
+                        frontmatterValues: {
+                            type: "object",
+                            description:
+                                "Require ALL of these frontmatter key/value " +
+                                "pairs to match (case-insensitive). E.g., " +
+                                '{"status": "active"}. Matches single ' +
+                                "values only, not lists or maps; to filter " +
+                                "on those, or on one key with several " +
+                                "acceptable values, require the key here " +
+                                "or in `frontmatter` and inspect matches " +
+                                "with read_multiple_notes " +
+                                "(metadataOnly: true).",
+                            additionalProperties: { type: "string" },
                         },
                         sort: {
                             type: "string",
@@ -791,6 +814,18 @@ export class MCPTools {
                             "(require any) instead.",
                     );
                 }
+                if (
+                    args.frontmatter !== undefined &&
+                    !Array.isArray(args.frontmatter) &&
+                    typeof args.frontmatter === "object" &&
+                    args.frontmatter !== null
+                ) {
+                    throw new Error(
+                        "`frontmatter` is now an array of keys to " +
+                            "require. Use `frontmatterValues` to match " +
+                            "key/value pairs.",
+                    );
+                }
                 for (const name of SEARCH_STRING_ARRAY_PARAMS) {
                     this.assertStringArray(args[name], name);
                 }
@@ -812,8 +847,12 @@ export class MCPTools {
                     args.mtime as
                         | { before?: string; after?: string }
                         | undefined,
-                    args.frontmatter as Record<string, string> | undefined,
+                    args.frontmatter as string[] | undefined,
+                    args.anyFrontmatter as string[] | undefined,
                     args.withoutFrontmatter as string[] | undefined,
+                    args.frontmatterValues as
+                        | Record<string, string>
+                        | undefined,
                     args.sort as "alpha" | "recent" | undefined,
                     args.limit as number | undefined,
                 );
@@ -1094,8 +1133,10 @@ export class MCPTools {
         withoutTags?: string[],
         text?: string,
         mtime?: { before?: string; after?: string },
-        frontmatter?: Record<string, string>,
+        frontmatter?: string[],
+        anyFrontmatter?: string[],
         withoutFrontmatter?: string[],
+        frontmatterValues?: Record<string, string>,
         sort?: "alpha" | "recent",
         limit?: number,
     ): Promise<{ notes: string[] }> {
@@ -1204,25 +1245,18 @@ export class MCPTools {
                 return true;
             });
         }
-        if (frontmatter && Object.keys(frontmatter).length > 0) {
+        if (frontmatter && frontmatter.length > 0) {
             files = files.filter((f) => {
-                const cache = this.app.metadataCache.getFileCache(f);
-                const fm = cache?.frontmatter;
-                if (!fm) {
-                    return false;
-                }
-                return Object.entries(frontmatter).every(([key, value]) => {
-                    const fmValue: unknown = fm[key];
-                    if (
-                        fmValue === undefined ||
-                        fmValue === null ||
-                        typeof fmValue === "object"
-                    ) {
-                        return false;
-                    }
-                    const fmStr = fmValue as string | number | boolean;
-                    return String(fmStr).toLowerCase() === value.toLowerCase();
-                });
+                const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
+                if (!fm) return false;
+                return frontmatter.every((key) => Object.hasOwn(fm, key));
+            });
+        }
+        if (anyFrontmatter && anyFrontmatter.length > 0) {
+            files = files.filter((f) => {
+                const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
+                if (!fm) return false;
+                return anyFrontmatter.some((key) => Object.hasOwn(fm, key));
             });
         }
         if (withoutFrontmatter && withoutFrontmatter.length > 0) {
@@ -1236,6 +1270,30 @@ export class MCPTools {
                 const fm = cache?.frontmatter;
                 return withoutFrontmatter.every(
                     (key) => fm === undefined || !Object.hasOwn(fm, key),
+                );
+            });
+        }
+        if (frontmatterValues && Object.keys(frontmatterValues).length > 0) {
+            files = files.filter((f) => {
+                const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
+                if (!fm) {
+                    return false;
+                }
+                return Object.entries(frontmatterValues).every(
+                    ([key, value]) => {
+                        const fmValue: unknown = fm[key];
+                        if (
+                            fmValue === undefined ||
+                            fmValue === null ||
+                            typeof fmValue === "object"
+                        ) {
+                            return false;
+                        }
+                        const fmStr = fmValue as string | number | boolean;
+                        return (
+                            String(fmStr).toLowerCase() === value.toLowerCase()
+                        );
+                    },
                 );
             });
         }
