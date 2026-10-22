@@ -39,7 +39,7 @@
     "eslint-plugin-obsidianmd": "^0.4.2",
     "happy-dom": "^20.11.15",
     "obsidian": "^1.13.1",
-    "obsidian-test-mocks": "^4.2.1",
+    "obsidian-test-mocks": "^6.0.0",
     "tslib": "^2.8.1",
     "typescript": "6.0.3",
     "vitest": "^4.1.10"
