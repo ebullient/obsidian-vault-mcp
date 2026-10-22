@@ -624,7 +624,25 @@ export class MCPTools {
                     },
                     required: ["path", "content"],
                 },
-                outputSchema: pathSchema,
+                outputSchema: {
+                    type: "object",
+                    properties: {
+                        path: { type: "string" },
+                        previousSize: {
+                            type: "number",
+                            description:
+                                "Length in characters of the note's " +
+                                "content before this update.",
+                        },
+                        newSize: {
+                            type: "number",
+                            description:
+                                "Length in characters of the note's " +
+                                "content after this update.",
+                        },
+                    },
+                    required: ["path", "previousSize", "newSize"],
+                },
                 annotations: {
                     readOnlyHint: false,
                     idempotentHint: false,
@@ -989,7 +1007,7 @@ export class MCPTools {
     private async updateNote(
         path: string,
         content: string,
-    ): Promise<{ path: string }> {
+    ): Promise<{ path: string; previousSize: number; newSize: number }> {
         return await this.noteHandler.updateNote(path, content);
     }
 

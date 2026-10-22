@@ -2,25 +2,9 @@ import type { CachedMetadata } from "obsidian";
 import { App } from "obsidian";
 import type { MetadataCache } from "obsidian-test-mocks/obsidian";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CurrentSettings, Logger } from "../src/@types/settings.js";
 import { momentFn } from "../src/vaultasmcp-moment.js";
 import { MCPTools } from "../src/vaultasmcp-Tools.js";
-
-const logger: Logger = {
-    debug: vi.fn(),
-    warn: vi.fn(),
-    warnAcl: vi.fn(),
-    error: vi.fn(),
-};
-
-const openSettings: CurrentSettings = {
-    pathACL: () => ({ forbidden: [], readOnly: [], writable: [] }),
-    bearerToken: () => undefined,
-    serverPort: () => 3000,
-    serverHost: () => "localhost",
-    serverVersion: () => "1",
-    normalizeQuotes: () => true,
-};
+import { logger, openSettings } from "./vaultasmcp-TestFixtures.js";
 
 const dailyNotes = vi.hoisted(() => ({
     appHasDailyNotesPluginLoaded: vi.fn(() => true),
@@ -242,6 +226,47 @@ describe("read_multiple_notes tool surface", () => {
         expect(result.notes["notes/b.md"].content).toBeUndefined();
         expect(typeof result.notes["notes/a.md"].sizeBytes).toBe("number");
         expect(typeof result.notes["notes/b.md"].sizeBytes).toBe("number");
+    });
+});
+
+describe("update_note tool surface", () => {
+    it("declares its own outputSchema with size-delta fields", () => {
+        const { tools } = makeTools({});
+        const updateNote = tools
+            .getToolDefinitions()
+            .find((tool) => tool.name === "update_note");
+
+        expect(updateNote).toBeDefined();
+        if (!updateNote) {
+            throw new Error("update_note tool definition not found");
+        }
+
+        const outputProperties = updateNote.outputSchema
+            ?.properties as Record<string, { type?: string }>;
+        expect(outputProperties.path).toMatchObject({ type: "string" });
+        expect(outputProperties.previousSize).toMatchObject({
+            type: "number",
+        });
+        expect(outputProperties.newSize).toMatchObject({ type: "number" });
+        expect(updateNote.outputSchema?.required).toContain("path");
+    });
+
+    it("does not change append_to_note or patch_note's output schema", () => {
+        const { tools } = makeTools({});
+        const definitions = tools.getToolDefinitions();
+        const appendToNote = definitions.find(
+            (tool) => tool.name === "append_to_note",
+        );
+        const patchNote = definitions.find(
+            (tool) => tool.name === "patch_note",
+        );
+
+        expect(appendToNote?.outputSchema?.properties).toEqual({
+            path: { type: "string" },
+        });
+        expect(patchNote?.outputSchema?.properties).toEqual({
+            path: { type: "string" },
+        });
     });
 });
 

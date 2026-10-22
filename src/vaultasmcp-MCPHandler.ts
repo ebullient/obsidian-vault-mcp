@@ -100,6 +100,22 @@ export class MCPHandler {
             );
         }
 
+        const tool = this.tools
+            .getToolDefinitions()
+            .find((t) => t.name === toolName);
+        if (tool) {
+            const unknownKey = Object.keys(args).find(
+                (key) => !(key in tool.inputSchema.properties),
+            );
+            if (unknownKey) {
+                return this.createError(
+                    request.id,
+                    -32602,
+                    `Unknown argument "${unknownKey}" for tool "${toolName}"`,
+                );
+            }
+        }
+
         try {
             const result = await this.tools.executeTool(toolName, args);
             this.logger.debug("Tool", toolName, "succeeded:", result);

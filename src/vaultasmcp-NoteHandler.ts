@@ -506,16 +506,25 @@ export class NoteHandler {
      * Update (replace) note content
      * ACL: Requires write access
      */
-    async updateNote(path: string, content: string): Promise<{ path: string }> {
+    async updateNote(
+        path: string,
+        content: string,
+    ): Promise<{ path: string; previousSize: number; newSize: number }> {
+        if (!content) {
+            throw new Error("Content must be a non-empty string");
+        }
+
         const file = this.getFileWithAclCheck(path, true);
 
+        let previousSize = 0;
         // Replace entire content using process for safety
-        await this.app.vault.process(file, () => {
+        await this.app.vault.process(file, (data) => {
+            previousSize = data.length;
             return content;
         });
 
         this.logger.debug(`Updated note: ${file.path}`);
-        return { path: file.path };
+        return { path: file.path, previousSize, newSize: content.length };
     }
 
     /**

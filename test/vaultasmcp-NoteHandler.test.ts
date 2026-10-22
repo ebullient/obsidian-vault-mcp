@@ -2,26 +2,11 @@ import type { CachedMetadata } from "obsidian";
 import { App } from "obsidian";
 import type { MetadataCache } from "obsidian-test-mocks/obsidian";
 import { describe, expect, it, vi } from "vitest";
-import type { CurrentSettings, Logger } from "../src/@types/settings.js";
+import type { CurrentSettings } from "../src/@types/settings.js";
 import { PathACLChecker } from "../src/vaultasmcp-PathACL.js";
 import { NoteHandler } from "../src/vaultasmcp-NoteHandler.js";
 import type { TemplateHandler } from "../src/vaultasmcp-TemplateHandler.js";
-
-const logger: Logger = {
-    debug: vi.fn(),
-    warn: vi.fn(),
-    warnAcl: vi.fn(),
-    error: vi.fn(),
-};
-
-const openSettings: CurrentSettings = {
-    pathACL: () => ({ forbidden: [], readOnly: [], writable: [] }),
-    bearerToken: () => undefined,
-    serverPort: () => 3000,
-    serverHost: () => "localhost",
-    serverVersion: () => "1",
-    normalizeQuotes: () => true,
-};
+import { logger, openSettings } from "./vaultasmcp-TestFixtures.js";
 
 // Minimal stub — tests here don't exercise template creation
 const templateHandler = {} as TemplateHandler;
@@ -560,6 +545,43 @@ describe("NoteHandler.updateNote", () => {
         expect(result.content).toBe("new content");
     });
 
+    it("rejects an empty content string and leaves the note unchanged", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/foo.md": "old content",
+        });
+        await expect(
+            handler.updateNote("notes/foo.md", ""),
+        ).rejects.toThrow();
+        const result = await handler.readNote("notes/foo.md");
+        expect(result.content).toBe("old content");
+    });
+
+    it("rejects a missing content argument and leaves the note unchanged", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/foo.md": "old content",
+        });
+        await expect(
+            handler.updateNote(
+                "notes/foo.md",
+                undefined as unknown as string,
+            ),
+        ).rejects.toThrow();
+        const result = await handler.readNote("notes/foo.md");
+        expect(result.content).toBe("old content");
+    });
+
+    it("reports previous and new content size in its response", async () => {
+        const { handler } = makeHandler(openSettings, {
+            "notes/foo.md": "old content",
+        });
+        const result = await handler.updateNote(
+            "notes/foo.md",
+            "new content!!",
+        );
+        expect(result.path).toBe("notes/foo.md");
+        expect(result.previousSize).toBe("old content".length);
+        expect(result.newSize).toBe("new content!!".length);
+    });
 });
 
 describe("NoteHandler.deleteNote", () => {
