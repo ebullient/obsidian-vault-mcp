@@ -52,6 +52,7 @@
   "overrides": {
     "glob": "13.0.6",
     "minimatch": "10.2.3",
+    "moment": "2.31.0",
     "shell-quote": "1.8.4"
   },
   "auto-changelog": {
