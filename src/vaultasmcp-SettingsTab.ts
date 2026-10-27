@@ -344,17 +344,6 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                         },
                     },
                     {
-                        name: "OAuth rate limit (requests/min)",
-                        desc: "Maximum requests per minute per IP allowed on OAuth endpoints (/register, /authorize, /token); set to 0 to disable rate limiting.",
-                        control: {
-                            type: "number",
-                            key: "oauthRateLimitMax",
-                            min: 0,
-                            max: 600,
-                            placeholder: "30",
-                        },
-                    },
-                    {
                         name: "Revoke all OAuth tokens",
                         desc: "Rotate the OAuth 2.1 signing secret to immediately invalidate all issued access tokens, refresh tokens, and dynamic client registrations.",
                         render: (setting: Setting) => {
@@ -368,6 +357,17 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                                         );
                                     }),
                             );
+                        },
+                    },
+                    {
+                        name: "OAuth rate limit (requests/min)",
+                        desc: "Maximum requests per minute per IP allowed on OAuth endpoints (/register, /authorize, /token); set to 0 to disable rate limiting.",
+                        control: {
+                            type: "number",
+                            key: "oauthRateLimitMax",
+                            min: 0,
+                            max: 600,
+                            placeholder: "30",
                         },
                     },
                 ],
