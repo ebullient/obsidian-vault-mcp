@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { Notice, Plugin } from "obsidian";
 import type {
     ConnectionError,
@@ -8,7 +9,12 @@ import type {
     VaultAsMCPSettings,
 } from "./@types/settings";
 import {
+    OAuthConsentModal,
+    type OAuthConsentPrompt,
+} from "./oauth/oauth-consent-modal";
+import {
     DEFAULT_SETTINGS,
+    OAUTH_SIGNING_SECRET_ID,
     TLS_PRIVATE_KEY_SECRET_ID,
 } from "./vaultasmcp-Constants";
 import {
@@ -26,6 +32,7 @@ export class VaultAsMCPPlugin
     private server: MCPServer | null = null;
     private statusBarItem: HTMLElement | null = null;
     private serverStatus: ServerStatus = "stopped";
+    private fallbackOAuthSecret: string | null = null;
 
     async onload() {
         console.debug(`loading Vault as MCP (VMCP) v${this.manifest.version}`);
@@ -133,6 +140,7 @@ export class VaultAsMCPPlugin
             const exposureError = validateServerExposure(
                 this.settings.serverHost,
                 this.settings.bearerToken,
+                this.oauthEnabled(),
             );
             if (exposureError) {
                 throw new Error(exposureError);
@@ -319,6 +327,45 @@ export class VaultAsMCPPlugin
                 .getSecret(this.settings.tlsPrivateKeySecretId)
                 ?.trim() || undefined
         );
+    }
+
+    oauthEnabled(): boolean {
+        return this.settings.oauthEnabled ?? false;
+    }
+
+    oauthPublicUrl(): string | undefined {
+        return this.settings.oauthPublicUrl?.trim() || undefined;
+    }
+
+    getOAuthSigningSecret(): string {
+        try {
+            const existing = this.app.secretStorage
+                ?.getSecret(OAUTH_SIGNING_SECRET_ID)
+                ?.trim();
+            if (existing) {
+                return existing;
+            }
+            const generated = randomBytes(32).toString("base64url");
+            this.app.secretStorage?.setSecret(
+                OAUTH_SIGNING_SECRET_ID,
+                generated,
+            );
+            return generated;
+        } catch {
+            if (!this.fallbackOAuthSecret) {
+                this.fallbackOAuthSecret =
+                    randomBytes(32).toString("base64url");
+            }
+            return this.fallbackOAuthSecret;
+        }
+    }
+
+    onOAuthAuthorizeRequest(prompt: OAuthConsentPrompt): void {
+        new Notice(
+            `🔐 MCP OAuth request from "${prompt.clientName}". Approval PIN: ${prompt.pin}`,
+            60000,
+        );
+        new OAuthConsentModal(this.app, prompt).open();
     }
 
     protocol(): "http" | "https" {

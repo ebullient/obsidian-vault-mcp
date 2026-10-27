@@ -1,3 +1,5 @@
+import type { OAuthConsentPrompt } from "../oauth/oauth-consent-modal";
+
 export interface PathACL {
     forbidden: string[];
     readOnly: string[];
@@ -14,6 +16,10 @@ export interface CurrentSettings {
     tlsEnabled(): boolean;
     tlsCertificatePem(): string | undefined;
     getTlsPrivateKeyPem(): string | undefined;
+    oauthEnabled(): boolean;
+    oauthPublicUrl(): string | undefined;
+    getOAuthSigningSecret(): string;
+    onOAuthAuthorizeRequest?(prompt: OAuthConsentPrompt): void;
 }
 
 export interface VaultAsMCPSettings {
@@ -28,6 +34,8 @@ export interface VaultAsMCPSettings {
     tlsEnabled: boolean;
     tlsCertificatePem?: string;
     tlsPrivateKeySecretId?: string;
+    oauthEnabled?: boolean;
+    oauthPublicUrl?: string;
 }
 
 export type ServerStatus = "stopped" | "running" | "error";

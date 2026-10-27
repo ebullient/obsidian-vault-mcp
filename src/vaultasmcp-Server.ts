@@ -3,11 +3,82 @@ import type { FastifyInstance } from "fastify";
 import Fastify from "fastify";
 import type { App } from "obsidian";
 import type { CurrentSettings, Logger, MCPRequest } from "./@types/settings";
+import { registerOAuthAuthorizeRoutes } from "./oauth/oauth-authorize";
+import {
+    registerOAuthMetadataRoutes,
+    resolveBaseUrl,
+} from "./oauth/oauth-metadata";
+import { registerOAuthRegisterRoutes } from "./oauth/oauth-register";
+import { registerOAuthTokenRoutes } from "./oauth/oauth-token";
+import { OAuthTokenStore } from "./oauth/oauth-token-store";
 import { MCPHandler } from "./vaultasmcp-MCPHandler";
+import {
+    extractBearerToken,
+    timingSafeTokenEqual,
+} from "./vaultasmcp-Security";
+
+export function normalizeMcpRequestUrl(
+    rawUrl: string | undefined,
+    oauthPublicUrl: string | undefined,
+): string {
+    const url = rawUrl || "/";
+    const qIndex = url.indexOf("?");
+    let pathname = qIndex >= 0 ? url.slice(0, qIndex) : url;
+    const search = qIndex >= 0 ? url.slice(qIndex) : "";
+
+    const configured = oauthPublicUrl?.trim();
+    if (configured) {
+        try {
+            const parsed = new URL(configured);
+            const publicPrefix = parsed.pathname.replace(/\/+$/, "");
+            if (publicPrefix && publicPrefix !== "/mcp") {
+                if (
+                    pathname === publicPrefix ||
+                    pathname === `${publicPrefix}/` ||
+                    pathname === `${publicPrefix}/mcp`
+                ) {
+                    return `/mcp${search}`;
+                }
+                if (pathname.startsWith(`${publicPrefix}/`)) {
+                    pathname = pathname.slice(publicPrefix.length);
+                }
+            }
+        } catch {
+            // Ignore malformed URL in settings
+        }
+    }
+
+    if (pathname === "/mcp/health") {
+        return `/health${search}`;
+    }
+    if (pathname.startsWith("/mcp/.well-known/")) {
+        pathname = pathname.slice(4);
+    }
+    if (pathname.startsWith("/.well-known/oauth-protected-resource/")) {
+        return `/.well-known/oauth-protected-resource${search}`;
+    }
+    if (pathname.startsWith("/.well-known/oauth-authorization-server/")) {
+        return `/.well-known/oauth-authorization-server${search}`;
+    }
+    if (
+        pathname === "/mcp/authorize" ||
+        pathname === "/mcp/authorize/status" ||
+        pathname === "/mcp/token" ||
+        pathname === "/mcp/register"
+    ) {
+        return `${pathname.slice(4)}${search}`;
+    }
+    if (pathname === "/mcp/mcp" || pathname === "/mcp/") {
+        return `/mcp${search}`;
+    }
+
+    return `${pathname}${search}`;
+}
 
 export class MCPServer {
     private server: FastifyInstance | null = null;
     private mcpHandler: MCPHandler;
+    private oauthStore: OAuthTokenStore;
     port: number;
 
     constructor(
@@ -16,6 +87,7 @@ export class MCPServer {
         private current: CurrentSettings,
     ) {
         this.mcpHandler = new MCPHandler(app, logger, current);
+        this.oauthStore = new OAuthTokenStore(current.getOAuthSigningSecret());
         this.port = current.serverPort();
     }
 
@@ -30,6 +102,8 @@ export class MCPServer {
 
         this.server = Fastify({
             logger: false,
+            rewriteUrl: (req) =>
+                normalizeMcpRequestUrl(req.url, this.current.oauthPublicUrl()),
             ...(tlsEnabled
                 ? {
                       https: {
@@ -40,40 +114,125 @@ export class MCPServer {
                 : {}),
         });
 
-        // Register CORS for Tailscale network access
+        // Support application/x-www-form-urlencoded for OAuth 2.1 /token and /authorize
+        this.server.addContentTypeParser(
+            "application/x-www-form-urlencoded",
+            { parseAs: "string" },
+            (_req, body, done) => {
+                try {
+                    const parsed = Object.fromEntries(
+                        new URLSearchParams(body as string),
+                    );
+                    done(null, parsed);
+                } catch (err) {
+                    done(err as Error, undefined);
+                }
+            },
+        );
+
+        // Register CORS for Tailscale and web MCP client access
         await this.server.register(cors, {
             origin: true,
             credentials: true,
+            exposedHeaders: ["WWW-Authenticate"],
         });
 
         this.server.addHook("preHandler", async (request, reply) => {
-            // Skip auth for health check
-            if (request.url === "/health") {
+            const pathname = request.url.split("?")[0];
+            const oauthEnabled = this.current.oauthEnabled();
+
+            // Skip auth for preflight and health check
+            if (request.method === "OPTIONS" || pathname === "/health") {
+                return;
+            }
+
+            // Skip auth for OAuth discovery, registration, authorization, and token endpoints
+            if (
+                oauthEnabled &&
+                (pathname.startsWith("/.well-known/") ||
+                    pathname === "/authorize" ||
+                    pathname === "/authorize/status" ||
+                    pathname === "/token" ||
+                    pathname === "/register")
+            ) {
                 return;
             }
 
             const bearerToken = this.current.bearerToken();
-            if (bearerToken) {
-                const auth = request.headers.authorization;
-                if (!auth?.startsWith("Bearer ")) {
-                    this.logger.warn("Request missing bearer token");
-                    reply.code(401).send({ error: "Missing bearer token" });
-                    return;
-                }
-
-                const token = auth.substring(7);
-                if (token !== bearerToken) {
-                    this.logger.warn("Request with invalid bearer token");
-                    reply.code(401).send({ error: "Invalid bearer token" });
-                    return;
-                }
+            if (!bearerToken && !oauthEnabled) {
+                return;
             }
+
+            const token = extractBearerToken(request.headers.authorization);
+
+            // 1. Check static Bearer token first
+            if (
+                bearerToken &&
+                token &&
+                timingSafeTokenEqual(token, bearerToken)
+            ) {
+                return;
+            }
+
+            // 2. Check OAuth 2.1 Access Token
+            if (
+                oauthEnabled &&
+                token &&
+                this.oauthStore.isValidAccessToken(token)
+            ) {
+                return;
+            }
+
+            // 3. Authentication failed
+            if (oauthEnabled) {
+                const baseUrl = resolveBaseUrl(this.current);
+                this.logger.warn(
+                    token
+                        ? "Request with invalid bearer or OAuth token"
+                        : "Request missing bearer or OAuth token",
+                );
+                reply
+                    .code(401)
+                    .header(
+                        "WWW-Authenticate",
+                        `Bearer realm="mcp", resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`,
+                    )
+                    .send({
+                        error: "unauthorized",
+                        error_description: token
+                            ? "Invalid bearer token or OAuth access token"
+                            : "Authentication required",
+                    });
+                return;
+            }
+
+            if (!token) {
+                this.logger.warn("Request missing bearer token");
+                reply.code(401).send({ error: "Missing bearer token" });
+                return;
+            }
+
+            this.logger.warn("Request with invalid bearer token");
+            reply.code(401).send({ error: "Invalid bearer token" });
         });
 
         // Health check endpoint
         this.server.get("/health", async () => {
             return { status: "ok" };
         });
+
+        // Register OAuth 2.1 endpoints when enabled
+        if (this.current.oauthEnabled()) {
+            registerOAuthMetadataRoutes(this.server, this.current);
+            registerOAuthRegisterRoutes(this.server, this.oauthStore);
+            registerOAuthAuthorizeRoutes(
+                this.server,
+                this.current,
+                this.oauthStore,
+                this.logger,
+            );
+            registerOAuthTokenRoutes(this.server, this.oauthStore, this.logger);
+        }
 
         // MCP protocol endpoint
         this.server.post("/mcp", async (request, reply) => {
@@ -140,6 +299,10 @@ export class MCPServer {
                 port: this.port,
                 host: host,
             });
+            const address = this.server.server.address();
+            if (address && typeof address === "object") {
+                this.port = address.port;
+            }
             if (host === "127.0.0.1") {
                 this.logger.debug(
                     "Server started on",
@@ -176,5 +339,9 @@ export class MCPServer {
 
     getPort(): number {
         return this.port;
+    }
+
+    getOAuthStore(): OAuthTokenStore {
+        return this.oauthStore;
     }
 }

@@ -15,6 +15,12 @@ export const openSettings: CurrentSettings = {
     serverHost: () => "localhost",
     serverVersion: () => "1",
     normalizeQuotes: () => true,
+    tlsEnabled: () => false,
+    tlsCertificatePem: () => undefined,
+    getTlsPrivateKeyPem: () => undefined,
+    oauthEnabled: () => false,
+    oauthPublicUrl: () => undefined,
+    getOAuthSigningSecret: () => "test-signing-secret-0123456789abcdef",
 };
 
 // The daily-notes-interface mock is not exported: vi.mock()/vi.hoisted()

@@ -19,7 +19,12 @@ import { MCPTools } from "./vaultasmcp-Tools";
 export class VaultAsMCPSettingsTab extends PluginSettingTab {
     plugin: VaultAsMCPPlugin;
     private showBearerToken = false;
-    private readonly restartSettingKeys = new Set(["serverHost", "serverPort"]);
+    private readonly restartSettingKeys = new Set([
+        "serverHost",
+        "serverPort",
+        "oauthEnabled",
+        "oauthPublicUrl",
+    ]);
 
     constructor(app: App, plugin: VaultAsMCPPlugin) {
         super(app, plugin);
@@ -198,7 +203,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                     },
                     {
                         name: "Server host",
-                        desc: "Network interface to bind the server to; localhost (127.0.0.1) is recommended for security; 0.0.0.0 requires a bearer token and should only be used when you need network access.",
+                        desc: "Network interface to bind the server to; localhost (127.0.0.1) is recommended for security; 0.0.0.0 requires a bearer token or OAuth 2.1 and should only be used when you need network access.",
                         render: (setting: Setting) => {
                             setting.addDropdown((dropdown) =>
                                 dropdown
@@ -214,11 +219,12 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                                     .onChange(async (value) => {
                                         if (
                                             value === "0.0.0.0" &&
-                                            !s.bearerToken
+                                            !s.bearerToken &&
+                                            !s.oauthEnabled
                                         ) {
                                             new Notice(
                                                 "⚠️ Network access without authentication is unsafe. " +
-                                                    "Generate a bearer token first.",
+                                                    "Generate a bearer token or enable OAuth 2.1 first.",
                                                 5000,
                                             );
                                         }
@@ -243,7 +249,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                     },
                     {
                         name: "Bearer token",
-                        desc: "Authentication token for MCP requests; required when server host is 0.0.0.0; leave empty to disable authentication for localhost-only use.",
+                        desc: "Authentication token for MCP requests; also used to approve OAuth 2.1 authorization requests when configured.",
                         render: (setting: Setting) => {
                             setting
                                 .addText((text) => {
@@ -312,6 +318,28 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                                             this.update();
                                         }),
                                 );
+                        },
+                    },
+                    {
+                        name: "Enable OAuth 2.1",
+                        desc: "Enable OAuth 2.1 discovery, dynamic client registration, and PKCE authorization code flow alongside Bearer token authentication. Signing keys are stored in Obsidian SecretStorage (if unavailable, an in-memory key is used and OAuth credentials will reset on restart).",
+                        control: { type: "toggle", key: "oauthEnabled" },
+                    },
+                    {
+                        name: "OAuth public base URL",
+                        desc: "Optional public HTTPS URL (e.g., https://mcp.example.com) when exposing the server via Cloudflare Tunnel or reverse proxy. Leave empty to infer from request headers.",
+                        render: (setting: Setting) => {
+                            setting.addText((text) =>
+                                text
+                                    .setPlaceholder("https://mcp.example.com")
+                                    .setValue(s.oauthPublicUrl ?? "")
+                                    .onChange(async (value) => {
+                                        await this.setControlValue(
+                                            "oauthPublicUrl",
+                                            value.trim() || undefined,
+                                        );
+                                    }),
+                            );
                         },
                     },
                 ],

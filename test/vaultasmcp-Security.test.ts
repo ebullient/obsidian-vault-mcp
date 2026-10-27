@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+    extractBearerToken,
+    timingSafeTokenEqual,
     validateServerExposure,
     validateTlsConfiguration,
 } from "../src/vaultasmcp-Security.js";
@@ -18,7 +20,30 @@ describe("validateServerExposure", () => {
     });
 
     it("allows all-interface binding when a bearer token is configured", () => {
-        expect(validateServerExposure("0.0.0.0", "secret-token")).toBeUndefined();
+        expect(
+            validateServerExposure("0.0.0.0", "secret-token"),
+        ).toBeUndefined();
+    });
+
+    it("allows all-interface binding when OAuth 2.1 is enabled", () => {
+        expect(
+            validateServerExposure("0.0.0.0", undefined, true),
+        ).toBeUndefined();
+    });
+});
+
+describe("timingSafeTokenEqual & extractBearerToken", () => {
+    it("compares tokens safely in constant time", () => {
+        expect(timingSafeTokenEqual("abc-123", "abc-123")).toBe(true);
+        expect(timingSafeTokenEqual("abc-123", "abc-124")).toBe(false);
+        expect(timingSafeTokenEqual("short", "longer-token")).toBe(false);
+    });
+
+    it("extracts bearer token from Authorization header", () => {
+        expect(extractBearerToken("Bearer my-secret")).toBe("my-secret");
+        expect(extractBearerToken("Basic dXNlcjpwYXNz")).toBeUndefined();
+        expect(extractBearerToken("Bearer   ")).toBeUndefined();
+        expect(extractBearerToken(undefined)).toBeUndefined();
     });
 });
 
