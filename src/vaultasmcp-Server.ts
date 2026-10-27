@@ -17,6 +17,7 @@ import { OAuthRateLimiter } from "./oauth/oauth-rate-limiter";
 import { registerOAuthRegisterRoutes } from "./oauth/oauth-register";
 import { registerOAuthTokenRoutes } from "./oauth/oauth-token";
 import { OAuthTokenStore } from "./oauth/oauth-token-store";
+import type { AuditLogStore } from "./vaultasmcp-AuditLog";
 import { MCPHandler } from "./vaultasmcp-MCPHandler";
 import {
     extractBearerToken,
@@ -93,8 +94,9 @@ export class MCPServer {
         app: App,
         private logger: Logger,
         private current: CurrentSettings,
+        auditLog?: AuditLogStore,
     ) {
-        this.mcpHandler = new MCPHandler(app, logger, current);
+        this.mcpHandler = new MCPHandler(app, logger, current, auditLog);
         this.oauthStore = new OAuthTokenStore(current.getOAuthSigningSecret());
         this.port = current.serverPort();
     }

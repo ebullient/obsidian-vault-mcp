@@ -12,6 +12,7 @@ import {
     OAuthConsentModal,
     type OAuthConsentPrompt,
 } from "./oauth/oauth-consent-modal";
+import { AuditLogStore } from "./vaultasmcp-AuditLog";
 import {
     DEFAULT_SETTINGS,
     OAUTH_SIGNING_SECRET_ID,
@@ -32,6 +33,7 @@ export class VaultAsMCPPlugin
     private server: MCPServer | null = null;
     private statusBarItem: HTMLElement | null = null;
     private serverStatus: ServerStatus = "stopped";
+    readonly auditLog = new AuditLogStore();
     private fallbackOAuthSecret: string | null = null;
 
     async onload() {
@@ -158,6 +160,7 @@ export class VaultAsMCPPlugin
                 this.app,
                 this, // as Logger
                 this, // as CurrentSettings
+                this.auditLog,
             );
 
             await this.server.start();

@@ -6,6 +6,7 @@ import {
     type Setting,
     type SettingDefinitionItem,
 } from "obsidian";
+import { AuditLogModal } from "./vaultasmcp-AuditLogModal";
 import { TLS_PRIVATE_KEY_SECRET_ID } from "./vaultasmcp-Constants";
 import { PathACLTestModal } from "./vaultasmcp-PathACLTestModal";
 import type { VaultAsMCPPlugin } from "./vaultasmcp-Plugin";
@@ -450,6 +451,22 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                         name: "Debug",
                         desc: "Enable debug messages.",
                         control: { type: "toggle", key: "debug" },
+                    },
+                    {
+                        name: "MCP audit log",
+                        desc: "View recent MCP tool calls and resource reads processed by the server.",
+                        render: (setting: Setting) => {
+                            setting.addButton((button) =>
+                                button
+                                    .setButtonText("View audit log")
+                                    .onClick(() => {
+                                        new AuditLogModal(
+                                            this.app,
+                                            this.plugin.auditLog,
+                                        ).open();
+                                    }),
+                            );
+                        },
                     },
                     {
                         name: "Log permission messages",
