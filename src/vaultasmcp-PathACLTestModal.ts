@@ -37,6 +37,10 @@ export class PathACLTestModal extends Modal {
             tlsEnabled: () => false,
             tlsCertificatePem: () => undefined,
             getTlsPrivateKeyPem: () => undefined,
+            oauthEnabled: () => false,
+            oauthPublicUrl: () => undefined,
+            oauthRateLimitMax: () => 30,
+            getOAuthSigningSecret: () => "",
         };
 
         this.aclChecker = new PathACLChecker(currentSettings, testLogger);

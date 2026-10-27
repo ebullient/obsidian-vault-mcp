@@ -60,7 +60,9 @@ The plugin provides three ways to control the server:
 Open Settings → Vault as MCP:
 
 - **Server Port**: Port number for the MCP server (default: 8765)
-- **Bearer Token**: Optional authentication token for secure access
+- **Bearer Token**: Optional static authentication token for secure access (also usable to approve OAuth 2.1 requests)
+- **Enable OAuth 2.1**: Enable OAuth 2.1 discovery, dynamic client registration, and PKCE authorization code flow alongside Bearer token authentication
+- **OAuth Public Base URL**: Optional public HTTPS URL (e.g., `https://mcp.example.com` or a subpath proxy URL) when exposing the server via reverse proxy or tunnel
 - **Auto-start Server**: Automatically start when Obsidian loads
 - **Debug**: Enable debug messages
 
@@ -80,6 +82,45 @@ Bearer token authentication is optional but recommended for security, especially
 1. Open Settings → Vault as MCP
 2. Click "Clear" to remove the token
 3. Save settings and restart the server if it's running
+
+### OAuth 2.1 Authentication
+
+In addition to static Bearer tokens, the server supports **OAuth 2.1 (Authorization Code + PKCE `S256`)** and can run both authentication methods simultaneously:
+
+- Requests with a valid static **Bearer Token** are accepted immediately.
+- Requests with a valid **OAuth 2.1 Access Token** are accepted.
+- Unauthenticated requests receive `401 Unauthorized` with a `WWW-Authenticate` header pointing to the Protected Resource Metadata endpoint so OAuth-capable MCP clients can discover and initiate the authorization flow automatically.
+
+#### Supported OAuth 2.1 Endpoints
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/.well-known/oauth-protected-resource` | `GET` | OAuth 2.0 Protected Resource Metadata (RFC 9728), advertising scopes `vault.access` and `vault.read` |
+| `/.well-known/oauth-authorization-server` | `GET` | OAuth 2.0 Authorization Server Metadata (RFC 8414), advertising `S256` PKCE support |
+| `/register` | `POST` | Dynamic Client Registration (RFC 7591) issuing stateless HMAC-signed `client_id` values; custom connectors may also specify a static non-`mcp_` `client_id` directly |
+| `/authorize` | `GET`, `POST` | Renders the user consent page and issues single-use authorization codes upon approval |
+| `/authorize/status` | `GET` | Short-polling endpoint for the consent page to detect in-app Obsidian modal approval |
+| `/token` | `POST` | Exchanges authorization codes (with PKCE `code_verifier`) or rotates single-use `refresh_token` grants |
+
+#### Approving Authorization Requests
+
+When an MCP client initiates `GET /authorize`:
+
+1. **In-App Obsidian Modal (Recommended)**: Obsidian displays a confirmation modal and notice showing the requesting client name, redirect URI, scope (`vault.access`), and an 8-digit one-time PIN. Clicking **Approve** in Obsidian immediately authorizes the session and redirects the browser. Keep Obsidian running while completing authorization.
+2. **Browser Consent Form**: Alternatively, enter either the configured static **Bearer Token** or the **8-digit one-time PIN** shown in Obsidian directly into the web consent page and click **Approve** (after 3 failed PIN attempts, PIN entry is locked for that session and approval must be completed via the Obsidian modal or static Bearer Token).
+
+#### Reverse Proxy & Subpath Routing
+
+- When exposing the server behind a reverse proxy or tunnel, set **OAuth public base URL** in settings (for example, `https://mcp.example.com` or `https://proxy.example.com/mcp/custom-prefix`).
+- To prevent Host Header Injection, OAuth metadata and `WWW-Authenticate` headers never trust `X-Forwarded-Host`; they always use the configured **OAuth public base URL** (or fall back to `localhost:<port>`).
+- Subpath-prefixed requests (such as `/mcp/.well-known/*`, `/mcp/authorize`, `/mcp/token`, `/mcp/register`, or paths under the configured public URL prefix) are automatically normalized.
+
+#### Credential Persistence
+
+- OAuth HMAC signing keys are generated automatically and stored in Obsidian SecretStorage (`vault-as-mcp-oauth-signing-secret`), allowing issued tokens and registered `client_id` values to remain valid across restarts. If SecretStorage is unavailable, an in-memory signing key is used and OAuth credentials reset when the server restarts.
+- **Token Revocation**: Use **Revoke all OAuth tokens** in plugin settings to rotate the signing secret and immediately invalidate all previously issued tokens and client registrations.
+- **Read-Only Scope (`vault.read`)**: Clients requesting the `vault.read` scope can call read-only tools and read vault resources while write/destructive tools remain blocked.
+- **Rate Limiting & Audit Log**: OAuth endpoints enforce sliding-window IP rate limiting (`429 Too Many Requests`), and recent MCP tool/resource calls can be inspected in Settings → **MCP audit log**.
 
 ### Connecting from Open WebUI
 
