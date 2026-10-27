@@ -534,12 +534,45 @@ describe("OAuth 2.1 + Static Bearer Token Coexistence", () => {
     });
 
     it("enforces read-only vault.read OAuth scope and supports signing secret rotation & rate limiting", async () => {
-        const { server, baseUrl } = await startTestServer();
-        const store = server.getOAuthStore();
-        const readOnlyTokens = store.issueTokenPair({
-            clientId: "readonly-client",
-            scope: "vault.read",
+        let modalPrompt: OAuthConsentPrompt | undefined;
+        const { server, baseUrl } = await startTestServer({
+            onOAuthAuthorizeRequest: (p) => {
+                modalPrompt = p;
+            },
         });
+        const { verifier, challenge } = createPkcePair();
+        // Client requests both "vault.access vault.read", user downgrades to "vault.read" in consent
+        const authQuery = new URLSearchParams({
+            client_id: "readonly-client",
+            redirect_uri: "https://client.example.com/oauth/callback",
+            response_type: "code",
+            state: "ro-state",
+            scope: "vault.access vault.read",
+            code_challenge: challenge,
+            code_challenge_method: "S256",
+        });
+        const getRes = await fetch(`${baseUrl}/authorize?${authQuery.toString()}`);
+        const getHtml = await getRes.text();
+        expect(getHtml).toContain("granted_scope");
+        expect(modalPrompt).toBeDefined();
+        modalPrompt?.approve("vault.read");
+
+        const statusRes = await fetch(`${baseUrl}/authorize/status?session_id=${encodeURIComponent(modalPrompt?.sessionId ?? "")}`);
+        const statusJson = (await statusRes.json()) as { redirect_url: string };
+        const roCode = new URL(statusJson.redirect_url).searchParams.get("code") ?? "";
+        const tokenRes = await fetch(`${baseUrl}/token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                grant_type: "authorization_code",
+                code: roCode,
+                client_id: "readonly-client",
+                redirect_uri: "https://client.example.com/oauth/callback",
+                code_verifier: verifier,
+            }).toString(),
+        });
+        const readOnlyTokens = (await tokenRes.json()) as { access_token: string; scope: string };
+        expect(readOnlyTokens.scope).toBe("vault.read");
 
         const listRes = await fetch(`${baseUrl}/mcp`, {
             method: "POST",

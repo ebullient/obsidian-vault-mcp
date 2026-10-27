@@ -340,6 +340,10 @@ export class VaultAsMCPPlugin
         return this.settings.oauthPublicUrl?.trim() || undefined;
     }
 
+    oauthRateLimitMax(): number {
+        return this.settings.oauthRateLimitMax ?? 30;
+    }
+
     getOAuthSigningSecret(): string {
         try {
             const existing = this.app.secretStorage

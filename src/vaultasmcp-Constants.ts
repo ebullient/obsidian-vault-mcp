@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS: VaultAsMCPSettings = {
     },
     tlsEnabled: false,
     oauthEnabled: false,
+    oauthRateLimitMax: 30,
 };
 
 export const MCP_VERSION = "2025-06-18"; // Claude Desktop sends 2025-06-18, but our implementation is based on 2025-06-18

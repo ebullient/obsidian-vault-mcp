@@ -2,7 +2,11 @@ import type { FastifyInstance } from "fastify";
 import type { CurrentSettings, Logger } from "../@types/settings";
 import { timingSafeTokenEqual } from "../vaultasmcp-Security";
 import { resolveBaseUrl } from "./oauth-metadata";
-import { DEFAULT_OAUTH_SCOPE, type OAuthTokenStore } from "./oauth-token-store";
+import {
+    DEFAULT_OAUTH_SCOPE,
+    type OAuthTokenStore,
+    READ_ONLY_OAUTH_SCOPE,
+} from "./oauth-token-store";
 
 interface AuthorizeParams {
     client_id?: string;
@@ -12,6 +16,7 @@ interface AuthorizeParams {
     code_challenge?: string;
     code_challenge_method?: string;
     scope?: string;
+    granted_scope?: string;
     resource?: string;
     session_id?: string;
     access_key?: string;
@@ -49,6 +54,26 @@ function buildRedirectUrl(
     return url.toString();
 }
 
+function normalizeGrantedScope(
+    grantedScope: string | undefined,
+    requestedScope: string | undefined,
+): string {
+    if (grantedScope?.trim() === READ_ONLY_OAUTH_SCOPE) {
+        return READ_ONLY_OAUTH_SCOPE;
+    }
+    if (grantedScope?.trim() === DEFAULT_OAUTH_SCOPE) {
+        return DEFAULT_OAUTH_SCOPE;
+    }
+    const tokens = (requestedScope ?? "").split(/\s+/).filter(Boolean);
+    if (
+        tokens.includes(READ_ONLY_OAUTH_SCOPE) &&
+        !tokens.includes(DEFAULT_OAUTH_SCOPE)
+    ) {
+        return READ_ONLY_OAUTH_SCOPE;
+    }
+    return DEFAULT_OAUTH_SCOPE;
+}
+
 function renderConsentPage(params: {
     clientName: string;
     clientId: string;
@@ -57,6 +82,7 @@ function renderConsentPage(params: {
     codeChallenge: string;
     codeChallengeMethod: string;
     scope: string;
+    selectedScope: string;
     resource: string;
     sessionId: string;
     authorizeUrl: string;
@@ -71,6 +97,8 @@ function renderConsentPage(params: {
     const errorHtml = params.errorMessage
         ? `<div class="error">${escapeHtml(params.errorMessage)}</div>`
         : "";
+
+    const isReadOnlySelected = params.selectedScope === READ_ONLY_OAUTH_SCOPE;
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -93,7 +121,7 @@ function renderConsentPage(params: {
             color: CanvasText;
         }
         .card {
-            max-width: 440px;
+            max-width: 460px;
             width: 90%;
             padding: 24px;
             border-radius: 12px;
@@ -136,13 +164,16 @@ function renderConsentPage(params: {
             font-weight: 600;
             margin: 14px 0 6px;
         }
-        input[type="password"] {
+        input[type="password"],
+        select {
             width: 100%;
             box-sizing: border-box;
             padding: 10px;
             border-radius: 6px;
             border: 1px solid rgba(128, 128, 128, 0.4);
-            font-size: 0.95rem;
+            font-size: 0.92rem;
+            background: Canvas;
+            color: CanvasText;
         }
         .actions {
             display: flex;
@@ -174,7 +205,7 @@ function renderConsentPage(params: {
         <p><strong>${escapeHtml(params.clientName)}</strong> is requesting access to your Obsidian vault via Model Context Protocol.</p>
         <div class="meta">
             <div><strong>Redirect URI:</strong> ${escapeHtml(params.redirectUri)}</div>
-            <div><strong>Scope:</strong> ${escapeHtml(params.scope)}</div>
+            <div><strong>Requested Scope:</strong> ${escapeHtml(params.scope)}</div>
         </div>
         ${errorHtml}
         <form method="POST" action="${escapeHtml(params.authorizeUrl)}">
@@ -187,6 +218,11 @@ function renderConsentPage(params: {
             <input type="hidden" name="scope" value="${escapeHtml(params.scope)}" />
             <input type="hidden" name="resource" value="${escapeHtml(params.resource)}" />
             <input type="hidden" name="session_id" value="${escapeHtml(params.sessionId)}" />
+            <label for="granted_scope">Access Level (Permission Scope):</label>
+            <select id="granted_scope" name="granted_scope">
+                <option value="${DEFAULT_OAUTH_SCOPE}"${isReadOnlySelected ? "" : " selected"}>Full Access (${DEFAULT_OAUTH_SCOPE}) — Read &amp; write notes (subject to Path ACL)</option>
+                <option value="${READ_ONLY_OAUTH_SCOPE}"${isReadOnlySelected ? " selected" : ""}>Read-Only (${READ_ONLY_OAUTH_SCOPE}) — Read &amp; search notes only, block all modifications</option>
+            </select>
             <label for="access_key">${escapeHtml(promptHint)}</label>
             <input id="access_key" name="access_key" type="password" autocomplete="off" placeholder="Bearer token or 8-digit PIN" />
             <div class="actions">
@@ -326,13 +362,14 @@ export function registerOAuthAuthorizeRoutes(
             return;
         }
 
+        const initialScope = normalizeGrantedScope(undefined, validated.scope);
         const session = store.createAuthorizationSession({
             clientId: validated.clientId,
             clientName: validated.clientName,
             redirectUri: validated.redirectUri,
             codeChallenge: validated.codeChallenge,
             codeChallengeMethod: validated.codeChallengeMethod,
-            scope: validated.scope,
+            scope: initialScope,
             state: validated.state,
             resource: validated.resource || undefined,
         });
@@ -344,8 +381,11 @@ export function registerOAuthAuthorizeRoutes(
             redirectUri: validated.redirectUri,
             scope: validated.scope,
             pin: session.pin,
-            approve: () => {
-                store.approveAuthorizationSession(session.sessionId);
+            approve: (grantedScope?: string) => {
+                store.approveAuthorizationSession(
+                    session.sessionId,
+                    grantedScope,
+                );
             },
             deny: () => {
                 store.denyAuthorizationSession(session.sessionId);
@@ -365,6 +405,7 @@ export function registerOAuthAuthorizeRoutes(
             codeChallenge: validated.codeChallenge,
             codeChallengeMethod: validated.codeChallengeMethod,
             scope: validated.scope,
+            selectedScope: initialScope,
             resource: validated.resource,
             sessionId: session.sessionId,
             authorizeUrl: `${baseUrl}/authorize`,
@@ -441,6 +482,11 @@ export function registerOAuthAuthorizeRoutes(
             return;
         }
 
+        const chosenScope = normalizeGrantedScope(
+            body.granted_scope,
+            validated.scope,
+        );
+
         // Check if already approved via Obsidian Modal
         const existingSession = store.getAuthorizationSession(body.session_id);
         if (
@@ -498,6 +544,7 @@ export function registerOAuthAuthorizeRoutes(
                 codeChallenge: validated.codeChallenge,
                 codeChallengeMethod: validated.codeChallengeMethod,
                 scope: validated.scope,
+                selectedScope: chosenScope,
                 resource: validated.resource,
                 sessionId: activeSession?.sessionId ?? "",
                 authorizeUrl: `${baseUrl}/authorize`,
@@ -518,7 +565,7 @@ export function registerOAuthAuthorizeRoutes(
             redirectUri: validated.redirectUri,
             codeChallenge: validated.codeChallenge,
             codeChallengeMethod: validated.codeChallengeMethod,
-            scope: validated.scope,
+            scope: chosenScope,
             resource: validated.resource || undefined,
         });
 

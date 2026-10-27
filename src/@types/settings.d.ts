@@ -24,6 +24,7 @@ export interface CurrentSettings {
     getTlsPrivateKeyPem(): string | undefined;
     oauthEnabled(): boolean;
     oauthPublicUrl(): string | undefined;
+    oauthRateLimitMax(): number;
     getOAuthSigningSecret(): string;
     onOAuthAuthorizeRequest?(prompt: OAuthConsentPrompt): void;
 }
@@ -42,6 +43,7 @@ export interface VaultAsMCPSettings {
     tlsPrivateKeySecretId?: string;
     oauthEnabled?: boolean;
     oauthPublicUrl?: string;
+    oauthRateLimitMax?: number;
 }
 
 export type ServerStatus = "stopped" | "running" | "error";

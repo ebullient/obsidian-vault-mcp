@@ -2,9 +2,13 @@ export class OAuthRateLimiter {
     private requests = new Map<string, number[]>();
 
     constructor(
-        private readonly maxRequests = 30,
+        private maxRequests = 30,
         private readonly windowMs = 60_000,
     ) {}
+
+    setMaxRequests(maxRequests: number): void {
+        this.maxRequests = maxRequests;
+    }
 
     allow(
         key: string,
@@ -13,6 +17,10 @@ export class OAuthRateLimiter {
         allowed: boolean;
         retryAfterSeconds: number;
     } {
+        if (this.maxRequests <= 0) {
+            return { allowed: true, retryAfterSeconds: 0 };
+        }
+
         const cutoff = now - this.windowMs;
         const timestamps = (this.requests.get(key) ?? []).filter(
             (t) => t > cutoff,

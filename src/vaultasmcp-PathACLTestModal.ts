@@ -39,6 +39,7 @@ export class PathACLTestModal extends Modal {
             getTlsPrivateKeyPem: () => undefined,
             oauthEnabled: () => false,
             oauthPublicUrl: () => undefined,
+            oauthRateLimitMax: () => 30,
             getOAuthSigningSecret: () => "",
         };
 
