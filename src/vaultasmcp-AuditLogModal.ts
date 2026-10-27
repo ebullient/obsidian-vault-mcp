@@ -14,7 +14,7 @@ export class AuditLogModal extends Modal {
         contentEl.empty();
 
         new Setting(contentEl)
-            .setName("MCP Audit Log")
+            .setName("MCP audit log")
             .setDesc("Recent MCP requests processed by this vault.")
             .setHeading()
             .addButton((button) =>

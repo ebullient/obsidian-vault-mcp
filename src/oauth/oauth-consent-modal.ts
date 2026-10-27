@@ -44,13 +44,13 @@ export class OAuthConsentModal extends Modal {
         });
 
         new Setting(contentEl)
-            .setName("Redirect URI")
+            .setName("Redirect URL")
             .setDesc(this.prompt.redirectUri);
 
         new Setting(contentEl)
-            .setName("Access level (Scope)")
+            .setName("Access level (scope)")
             .setDesc(
-                "Choose whether this client gets full read/write access (subject to Path ACL) or strictly read-only access.",
+                "Choose whether this client gets full read/write access (subject to path ACL) or strictly read-only access.",
             )
             .addDropdown((dropdown) =>
                 dropdown
@@ -69,7 +69,7 @@ export class OAuthConsentModal extends Modal {
             );
 
         new Setting(contentEl)
-            .setName("One-time approval PIN (8 digits)")
+            .setName("One-time approval code (8 digits)")
             .setDesc(
                 `Click Approve below to authorize immediately, or enter PIN ${this.prompt.pin} on the authorization web page.`,
             );

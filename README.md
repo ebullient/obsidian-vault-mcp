@@ -95,7 +95,7 @@ In addition to static Bearer tokens, the server supports **OAuth 2.1 (Authorizat
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/.well-known/oauth-protected-resource` | `GET` | OAuth 2.0 Protected Resource Metadata (RFC 9728), advertising scope `vault.access` |
+| `/.well-known/oauth-protected-resource` | `GET` | OAuth 2.0 Protected Resource Metadata (RFC 9728), advertising scopes `vault.access` and `vault.read` |
 | `/.well-known/oauth-authorization-server` | `GET` | OAuth 2.0 Authorization Server Metadata (RFC 8414), advertising `S256` PKCE support |
 | `/register` | `POST` | Dynamic Client Registration (RFC 7591) issuing stateless HMAC-signed `client_id` values; custom connectors may also specify a static non-`mcp_` `client_id` directly |
 | `/authorize` | `GET`, `POST` | Renders the user consent page and issues single-use authorization codes upon approval |
@@ -118,6 +118,9 @@ When an MCP client initiates `GET /authorize`:
 #### Credential Persistence
 
 - OAuth HMAC signing keys are generated automatically and stored in Obsidian SecretStorage (`vault-as-mcp-oauth-signing-secret`), allowing issued tokens and registered `client_id` values to remain valid across restarts. If SecretStorage is unavailable, an in-memory signing key is used and OAuth credentials reset when the server restarts.
+- **Token Revocation**: Use **Revoke all OAuth tokens** in plugin settings to rotate the signing secret and immediately invalidate all previously issued tokens and client registrations.
+- **Read-Only Scope (`vault.read`)**: Clients requesting the `vault.read` scope can call read-only tools and read vault resources while write/destructive tools remain blocked.
+- **Rate Limiting & Audit Log**: OAuth endpoints enforce sliding-window IP rate limiting (`429 Too Many Requests`), and recent MCP tool/resource calls can be inspected in Settings → **MCP audit log**.
 
 ### Connecting from Open WebUI
 
