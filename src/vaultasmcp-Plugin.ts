@@ -360,6 +360,21 @@ export class VaultAsMCPPlugin
         }
     }
 
+    rotateOAuthSigningSecret(): string {
+        const generated = randomBytes(32).toString("base64url");
+        this.fallbackOAuthSecret = generated;
+        try {
+            this.app.secretStorage?.setSecret(
+                OAUTH_SIGNING_SECRET_ID,
+                generated,
+            );
+        } catch {
+            // Keep in-memory fallback secret
+        }
+        this.server?.resetOAuthStore(generated);
+        return generated;
+    }
+
     onOAuthAuthorizeRequest(prompt: OAuthConsentPrompt): void {
         new Notice(
             `🔐 MCP OAuth request from "${prompt.clientName}". Approval PIN: ${prompt.pin}`,

@@ -2,9 +2,11 @@ import type { App } from "obsidian";
 import type {
     CurrentSettings,
     Logger,
+    MCPAuthContext,
     MCPRequest,
     MCPResponse,
 } from "./@types/settings";
+import { READ_ONLY_OAUTH_SCOPE } from "./oauth/oauth-token-store";
 import { MCP_VERSION, SERVER_NAME } from "./vaultasmcp-Constants";
 import { MCPTools } from "./vaultasmcp-Tools";
 
@@ -19,7 +21,10 @@ export class MCPHandler {
         this.version = current.serverVersion();
     }
 
-    async handleRequest(request: MCPRequest): Promise<MCPResponse | null> {
+    async handleRequest(
+        request: MCPRequest,
+        authContext?: MCPAuthContext,
+    ): Promise<MCPResponse | null> {
         this.logger.debug("Received MCP request:", request);
 
         try {
@@ -36,7 +41,7 @@ export class MCPHandler {
                 case "tools/list":
                     return this.handleToolsList(request);
                 case "tools/call":
-                    return await this.handleToolsCall(request);
+                    return await this.handleToolsCall(request, authContext);
                 case "ping":
                     return this.createResponse(request.id, { status: "ok" });
                 default:
@@ -85,7 +90,10 @@ export class MCPHandler {
         });
     }
 
-    private async handleToolsCall(request: MCPRequest): Promise<MCPResponse> {
+    private async handleToolsCall(
+        request: MCPRequest,
+        authContext?: MCPAuthContext,
+    ): Promise<MCPResponse> {
         const params = request.params ?? {};
         const toolName = params.name as string;
         const args = (params.arguments as Record<string, unknown>) ?? {};
@@ -104,6 +112,23 @@ export class MCPHandler {
             .getToolDefinitions()
             .find((t) => t.name === toolName);
         if (tool) {
+            const scopes = (authContext?.scope ?? "")
+                .split(/\s+/)
+                .filter(Boolean);
+            const isReadOnlyScope =
+                authContext?.authType === "oauth" &&
+                scopes.includes(READ_ONLY_OAUTH_SCOPE) &&
+                !scopes.includes("vault.access");
+            if (isReadOnlyScope && tool.annotations?.readOnlyHint !== true) {
+                this.logger.warnAcl(
+                    `OAuth read-only scope denied write tool: ${toolName}`,
+                );
+                return this.createError(
+                    request.id,
+                    -32001,
+                    `Insufficient OAuth scope: tool "${toolName}" requires "vault.access" scope`,
+                );
+            }
             const unknownKey = Object.keys(args).find(
                 (key) => !(key in tool.inputSchema.properties),
             );

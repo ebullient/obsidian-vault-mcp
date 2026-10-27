@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { CurrentSettings } from "../@types/settings";
-import { DEFAULT_OAUTH_SCOPE } from "./oauth-token-store";
+import { SUPPORTED_OAUTH_SCOPES } from "./oauth-token-store";
 
 /**
  * Resolve the external Base URL for OAuth metadata and WWW-Authenticate headers.
@@ -46,7 +46,7 @@ export function registerOAuthMetadataRoutes(
             resource: resourceUrl,
             authorization_servers: [baseUrl],
             bearer_methods_supported: ["header"],
-            scopes_supported: [DEFAULT_OAUTH_SCOPE],
+            scopes_supported: [...SUPPORTED_OAUTH_SCOPES],
         };
     };
 
@@ -70,7 +70,7 @@ export function registerOAuthMetadataRoutes(
             grant_types_supported: ["authorization_code", "refresh_token"],
             token_endpoint_auth_methods_supported: ["none"],
             code_challenge_methods_supported: ["S256"],
-            scopes_supported: [DEFAULT_OAUTH_SCOPE],
+            scopes_supported: [...SUPPORTED_OAUTH_SCOPES],
         };
     });
 }

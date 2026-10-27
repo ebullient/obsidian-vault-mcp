@@ -1,13 +1,19 @@
 import cors from "@fastify/cors";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import Fastify from "fastify";
 import type { App } from "obsidian";
-import type { CurrentSettings, Logger, MCPRequest } from "./@types/settings";
+import type {
+    CurrentSettings,
+    Logger,
+    MCPAuthContext,
+    MCPRequest,
+} from "./@types/settings";
 import { registerOAuthAuthorizeRoutes } from "./oauth/oauth-authorize";
 import {
     registerOAuthMetadataRoutes,
     resolveBaseUrl,
 } from "./oauth/oauth-metadata";
+import { OAuthRateLimiter } from "./oauth/oauth-rate-limiter";
 import { registerOAuthRegisterRoutes } from "./oauth/oauth-register";
 import { registerOAuthTokenRoutes } from "./oauth/oauth-token";
 import { OAuthTokenStore } from "./oauth/oauth-token-store";
@@ -79,6 +85,8 @@ export class MCPServer {
     private server: FastifyInstance | null = null;
     private mcpHandler: MCPHandler;
     private oauthStore: OAuthTokenStore;
+    private rateLimiter = new OAuthRateLimiter();
+    private requestAuthContext = new WeakMap<FastifyRequest, MCPAuthContext>();
     port: number;
 
     constructor(
@@ -134,7 +142,7 @@ export class MCPServer {
         await this.server.register(cors, {
             origin: true,
             credentials: true,
-            exposedHeaders: ["WWW-Authenticate"],
+            exposedHeaders: ["WWW-Authenticate", "Retry-After"],
         });
 
         this.server.addHook("preHandler", async (request, reply) => {
@@ -155,6 +163,28 @@ export class MCPServer {
                     pathname === "/token" ||
                     pathname === "/register")
             ) {
+                if (
+                    pathname === "/authorize" ||
+                    pathname === "/token" ||
+                    pathname === "/register"
+                ) {
+                    const rateKey = `${request.ip || "local"}:${pathname}`;
+                    const check = this.rateLimiter.allow(rateKey);
+                    if (!check.allowed) {
+                        reply
+                            .code(429)
+                            .header(
+                                "Retry-After",
+                                String(check.retryAfterSeconds),
+                            )
+                            .send({
+                                error: "too_many_requests",
+                                error_description:
+                                    "Rate limit exceeded for OAuth endpoint. Please try again later.",
+                            });
+                        return;
+                    }
+                }
                 return;
             }
 
@@ -171,16 +201,21 @@ export class MCPServer {
                 token &&
                 timingSafeTokenEqual(token, bearerToken)
             ) {
+                this.requestAuthContext.set(request, { authType: "bearer" });
                 return;
             }
 
             // 2. Check OAuth 2.1 Access Token
-            if (
-                oauthEnabled &&
-                token &&
-                this.oauthStore.isValidAccessToken(token)
-            ) {
-                return;
+            if (oauthEnabled && token) {
+                const verified = this.oauthStore.verifyAccessToken(token);
+                if (verified) {
+                    this.requestAuthContext.set(request, {
+                        authType: "oauth",
+                        clientId: verified.clientId,
+                        scope: verified.scope,
+                    });
+                    return;
+                }
             }
 
             // 3. Authentication failed
@@ -268,7 +303,11 @@ export class MCPServer {
                 mcpRequest.id !== undefined ? `(id: ${mcpRequest.id})` : "",
             );
 
-            const response = await this.mcpHandler.handleRequest(mcpRequest);
+            const authContext = this.requestAuthContext.get(request);
+            const response = await this.mcpHandler.handleRequest(
+                mcpRequest,
+                authContext,
+            );
 
             // Notifications don't get responses
             if (response === null) {
@@ -343,5 +382,10 @@ export class MCPServer {
 
     getOAuthStore(): OAuthTokenStore {
         return this.oauthStore;
+    }
+
+    resetOAuthStore(newSecret: string): void {
+        this.oauthStore.resetSecret(newSecret);
+        this.rateLimiter.reset();
     }
 }

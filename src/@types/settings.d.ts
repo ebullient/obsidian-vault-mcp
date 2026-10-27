@@ -1,5 +1,11 @@
 import type { OAuthConsentPrompt } from "../oauth/oauth-consent-modal";
 
+export interface MCPAuthContext {
+    authType?: "bearer" | "oauth" | "anonymous";
+    clientId?: string;
+    scope?: string;
+}
+
 export interface PathACL {
     forbidden: string[];
     readOnly: string[];

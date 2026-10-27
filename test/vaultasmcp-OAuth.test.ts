@@ -3,6 +3,7 @@ import { App } from "obsidian";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CurrentSettings } from "../src/@types/settings.js";
 import type { OAuthConsentPrompt } from "../src/oauth/oauth-consent-modal.js";
+import { OAuthRateLimiter } from "../src/oauth/oauth-rate-limiter.js";
 import { OAuthTokenStore } from "../src/oauth/oauth-token-store.js";
 import { MCPServer } from "../src/vaultasmcp-Server.js";
 import { logger, openSettings } from "./vaultasmcp-TestFixtures.js";
@@ -85,7 +86,7 @@ describe("OAuth 2.1 + Static Bearer Token Coexistence", () => {
         expect(prBody.authorization_servers).toEqual([
             "https://mcp.example.com",
         ]);
-        expect(prBody.scopes_supported).toEqual(["vault.access"]);
+        expect(prBody.scopes_supported).toEqual(["vault.access", "vault.read"]);
 
         const asRes = await fetch(
             `${baseUrl}/.well-known/oauth-authorization-server`,
@@ -107,7 +108,7 @@ describe("OAuth 2.1 + Static Bearer Token Coexistence", () => {
         );
         expect(asBody.token_endpoint_auth_methods_supported).toEqual(["none"]);
         expect(asBody.code_challenge_methods_supported).toEqual(["S256"]);
-        expect(asBody.scopes_supported).toEqual(["vault.access"]);
+        expect(asBody.scopes_supported).toEqual(["vault.access", "vault.read"]);
     });
 
     it("returns 401 with WWW-Authenticate resource_metadata when unauthenticated, while allowing static Bearer token", async () => {
@@ -530,5 +531,67 @@ describe("OAuth 2.1 + Static Bearer Token Coexistence", () => {
             },
         );
         expect(mcpRes.status).toBe(200);
+    });
+
+    it("enforces read-only vault.read OAuth scope and supports signing secret rotation & rate limiting", async () => {
+        const { server, baseUrl } = await startTestServer();
+        const store = server.getOAuthStore();
+        const readOnlyTokens = store.issueTokenPair({
+            clientId: "readonly-client",
+            scope: "vault.read",
+        });
+
+        const listRes = await fetch(`${baseUrl}/mcp`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${readOnlyTokens.access_token}`,
+            },
+            body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: 10,
+                method: "tools/call",
+                params: { name: "list_notes", arguments: { path: "" } },
+            }),
+        });
+        expect(listRes.status).toBe(200);
+        expect(((await listRes.json()) as { error?: unknown }).error).toBeUndefined();
+
+        const writeRes = await fetch(`${baseUrl}/mcp`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${readOnlyTokens.access_token}`,
+            },
+            body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: 11,
+                method: "tools/call",
+                params: {
+                    name: "create_note",
+                    arguments: { path: "notes/blocked.md", content: "denied" },
+                },
+            }),
+        });
+        const writeJson = (await writeRes.json()) as {
+            error?: { code: number; message: string };
+        };
+        expect(writeJson.error?.code).toBe(-32001);
+
+        server.resetOAuthStore("rotated-signing-secret-999999999999");
+        const afterRotateRes = await fetch(`${baseUrl}/mcp`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${readOnlyTokens.access_token}`,
+            },
+            body: JSON.stringify({ jsonrpc: "2.0", id: 12, method: "ping" }),
+        });
+        expect(afterRotateRes.status).toBe(401);
+
+        const limiter = new OAuthRateLimiter(2, 60_000);
+        expect(limiter.allow("127.0.0.1:/token", 1000).allowed).toBe(true);
+        expect(limiter.allow("127.0.0.1:/token", 1100).allowed).toBe(true);
+        expect(limiter.allow("127.0.0.1:/token", 1200).allowed).toBe(false);
     });
 });

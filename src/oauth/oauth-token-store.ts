@@ -6,6 +6,17 @@ import {
 } from "node:crypto";
 
 export const DEFAULT_OAUTH_SCOPE = "vault.access";
+export const READ_ONLY_OAUTH_SCOPE = "vault.read";
+export const SUPPORTED_OAUTH_SCOPES = [
+    DEFAULT_OAUTH_SCOPE,
+    READ_ONLY_OAUTH_SCOPE,
+] as const;
+
+export interface VerifiedAccessToken {
+    clientId: string;
+    scope: string;
+    resource?: string;
+}
 export const MAX_PIN_ATTEMPTS = 3;
 
 export interface RegisteredClient {
@@ -74,7 +85,18 @@ export class OAuthTokenStore {
     private authSessions = new Map<string, AuthorizationSessionRecord>();
     private consumedRefreshJtis = new Map<string, number>();
 
-    constructor(private readonly signingSecret: string) {}
+    private signingSecret: string;
+
+    constructor(signingSecret: string) {
+        this.signingSecret = signingSecret;
+    }
+
+    resetSecret(newSecret: string): void {
+        this.signingSecret = newSecret;
+        this.authCodes.clear();
+        this.authSessions.clear();
+        this.consumedRefreshJtis.clear();
+    }
 
     private sign(data: string): string {
         return createHmac("sha256", this.signingSecret)
@@ -420,8 +442,20 @@ export class OAuthTokenStore {
         }
     }
 
+    verifyAccessToken(token: string): VerifiedAccessToken | undefined {
+        const payload = this.verifySignedToken(token, "at");
+        if (!payload) {
+            return undefined;
+        }
+        return {
+            clientId: payload.sub,
+            scope: payload.scope,
+            resource: payload.res,
+        };
+    }
+
     isValidAccessToken(token: string): boolean {
-        return this.verifySignedToken(token, "at") !== undefined;
+        return this.verifyAccessToken(token) !== undefined;
     }
 
     consumeRefreshToken(

@@ -342,6 +342,22 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                             );
                         },
                     },
+                    {
+                        name: "Revoke all OAuth tokens",
+                        desc: "Rotate the OAuth 2.1 signing secret to immediately invalidate all issued access tokens, refresh tokens, and dynamic client registrations.",
+                        render: (setting: Setting) => {
+                            setting.addButton((button) =>
+                                button
+                                    .setButtonText("Revoke tokens")
+                                    .onClick(() => {
+                                        this.plugin.rotateOAuthSigningSecret();
+                                        new Notice(
+                                            "All OAuth 2.1 tokens and client registrations have been revoked.",
+                                        );
+                                    }),
+                            );
+                        },
+                    },
                 ],
             },
             // Path access control
