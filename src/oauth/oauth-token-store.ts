@@ -241,7 +241,10 @@ export class OAuthTokenStore {
         return record;
     }
 
-    approveAuthorizationSession(sessionId: string): string | undefined {
+    approveAuthorizationSession(
+        sessionId: string,
+        grantedScope?: string,
+    ): string | undefined {
         const record = this.getAuthorizationSession(sessionId);
         if (!record || record.status === "denied") {
             return undefined;
@@ -252,6 +255,9 @@ export class OAuthTokenStore {
             this.authCodes.has(record.code)
         ) {
             return record.code;
+        }
+        if (grantedScope?.trim()) {
+            record.scope = grantedScope.trim();
         }
         const code = this.createAuthorizationCode({
             clientId: record.clientId,

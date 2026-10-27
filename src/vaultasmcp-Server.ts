@@ -169,6 +169,9 @@ export class MCPServer {
                     pathname === "/register"
                 ) {
                     const rateKey = `${request.ip || "local"}:${pathname}`;
+                    this.rateLimiter.setMaxRequests(
+                        this.current.oauthRateLimitMax(),
+                    );
                     const check = this.rateLimiter.allow(rateKey);
                     if (!check.allowed) {
                         reply

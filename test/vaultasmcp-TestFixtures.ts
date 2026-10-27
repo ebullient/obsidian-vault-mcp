@@ -20,6 +20,7 @@ export const openSettings: CurrentSettings = {
     getTlsPrivateKeyPem: () => undefined,
     oauthEnabled: () => false,
     oauthPublicUrl: () => undefined,
+    oauthRateLimitMax: () => 30,
     getOAuthSigningSecret: () => "test-signing-secret-0123456789abcdef",
 };
 
