@@ -6,6 +6,7 @@ import {
     type Setting,
     type SettingDefinitionItem,
 } from "obsidian";
+import { AuditLogModal } from "./vaultasmcp-AuditLogModal";
 import { TLS_PRIVATE_KEY_SECRET_ID } from "./vaultasmcp-Constants";
 import { PathACLTestModal } from "./vaultasmcp-PathACLTestModal";
 import type { VaultAsMCPPlugin } from "./vaultasmcp-Plugin";
@@ -19,7 +20,12 @@ import { MCPTools } from "./vaultasmcp-Tools";
 export class VaultAsMCPSettingsTab extends PluginSettingTab {
     plugin: VaultAsMCPPlugin;
     private showBearerToken = false;
-    private readonly restartSettingKeys = new Set(["serverHost", "serverPort"]);
+    private readonly restartSettingKeys = new Set([
+        "serverHost",
+        "serverPort",
+        "oauthEnabled",
+        "oauthPublicUrl",
+    ]);
 
     constructor(app: App, plugin: VaultAsMCPPlugin) {
         super(app, plugin);
@@ -198,7 +204,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                     },
                     {
                         name: "Server host",
-                        desc: "Network interface to bind the server to; localhost (127.0.0.1) is recommended for security; 0.0.0.0 requires a bearer token and should only be used when you need network access.",
+                        desc: "Network interface to bind the server to; localhost (127.0.0.1) is recommended for security; 0.0.0.0 requires a bearer token or OAuth 2.1 and should only be used when you need network access.",
                         render: (setting: Setting) => {
                             setting.addDropdown((dropdown) =>
                                 dropdown
@@ -214,11 +220,12 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                                     .onChange(async (value) => {
                                         if (
                                             value === "0.0.0.0" &&
-                                            !s.bearerToken
+                                            !s.bearerToken &&
+                                            !s.oauthEnabled
                                         ) {
                                             new Notice(
                                                 "⚠️ Network access without authentication is unsafe. " +
-                                                    "Generate a bearer token first.",
+                                                    "Generate a bearer token or enable OAuth 2.1 first.",
                                                 5000,
                                             );
                                         }
@@ -243,7 +250,7 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                     },
                     {
                         name: "Bearer token",
-                        desc: "Authentication token for MCP requests; required when server host is 0.0.0.0; leave empty to disable authentication for localhost-only use.",
+                        desc: "Authentication token for MCP requests; also used to approve OAuth 2.1 authorization requests when configured.",
                         render: (setting: Setting) => {
                             setting
                                 .addText((text) => {
@@ -312,6 +319,55 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                                             this.update();
                                         }),
                                 );
+                        },
+                    },
+                    {
+                        name: "Enable OAuth 2.1",
+                        desc: "Enable OAuth 2.1 discovery, dynamic client registration, and PKCE authorization code flow alongside Bearer token authentication. Signing keys are stored in Obsidian SecretStorage (if unavailable, an in-memory key is used and OAuth credentials will reset on restart).",
+                        control: { type: "toggle", key: "oauthEnabled" },
+                    },
+                    {
+                        name: "OAuth public base URL",
+                        desc: "Optional public HTTPS URL (e.g., https://mcp.example.com) when exposing the server via Cloudflare Tunnel or reverse proxy. Leave empty to infer from request headers.",
+                        render: (setting: Setting) => {
+                            setting.addText((text) =>
+                                text
+                                    .setPlaceholder("https://mcp.example.com")
+                                    .setValue(s.oauthPublicUrl ?? "")
+                                    .onChange(async (value) => {
+                                        await this.setControlValue(
+                                            "oauthPublicUrl",
+                                            value.trim() || undefined,
+                                        );
+                                    }),
+                            );
+                        },
+                    },
+                    {
+                        name: "Revoke all OAuth tokens",
+                        desc: "Rotate the OAuth 2.1 signing secret to immediately invalidate all issued access tokens, refresh tokens, and dynamic client registrations.",
+                        render: (setting: Setting) => {
+                            setting.addButton((button) =>
+                                button
+                                    .setButtonText("Revoke tokens")
+                                    .onClick(() => {
+                                        this.plugin.rotateOAuthSigningSecret();
+                                        new Notice(
+                                            "All OAuth 2.1 tokens and client registrations have been revoked.",
+                                        );
+                                    }),
+                            );
+                        },
+                    },
+                    {
+                        name: "OAuth rate limit (requests/min)",
+                        desc: "Maximum requests per minute per IP allowed on OAuth endpoints (/register, /authorize, /token); set to 0 to disable rate limiting.",
+                        control: {
+                            type: "number",
+                            key: "oauthRateLimitMax",
+                            min: 0,
+                            max: 600,
+                            placeholder: "30",
                         },
                     },
                 ],
@@ -406,6 +462,22 @@ export class VaultAsMCPSettingsTab extends PluginSettingTab {
                         name: "Debug",
                         desc: "Enable debug messages.",
                         control: { type: "toggle", key: "debug" },
+                    },
+                    {
+                        name: "MCP audit log",
+                        desc: "View recent MCP tool calls and resource reads processed by the server.",
+                        render: (setting: Setting) => {
+                            setting.addButton((button) =>
+                                button
+                                    .setButtonText("View audit log")
+                                    .onClick(() => {
+                                        new AuditLogModal(
+                                            this.app,
+                                            this.plugin.auditLog,
+                                        ).open();
+                                    }),
+                            );
+                        },
                     },
                     {
                         name: "Log permission messages",
